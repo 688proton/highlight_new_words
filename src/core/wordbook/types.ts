@@ -17,9 +17,10 @@ export type { BookKind } from './ids';
 
 /**
  * 词书分类：user 用户词书；level CEFR 风格级别（包含体系：选 B2 = B2+C1+C2）；exam 考试（含“增量”书，见 delta）；
- * frequency 词频（COCA 前 N 之外）；other 其他
+ * frequency 词频（COCA 前 N 之外）；core 通用核心词（NGSL 等）；domain 专业领域（学术科研/商务/职场/医学/计算机）；other 其他。
+ * 新增分类时需补全按分类穷举的 Record（如 popup/model.ts 的分类标题）。
  */
-export type BookCategory = 'user' | 'level' | 'exam' | 'frequency' | 'other';
+export type BookCategory = 'user' | 'level' | 'exam' | 'frequency' | 'core' | 'domain' | 'other';
 
 /** 内置词书目录（data/books/index.json）中的元数据，由 data 分片生成 */
 export interface CatalogBookMeta {
@@ -41,6 +42,21 @@ export interface CatalogBookMeta {
   placeholder?: boolean;
   /** 增量词书：本书 = of 书 − minus 各书（如六级新增 = 六级 − 中考/高考/四级），UI 可标“增量” */
   delta?: { of: BookId; minus: BookId[] };
+  /**
+   * 包含体系组键（level 书为 'cefr'，frequency 书为 'coca'）：同组单选；
+   * 作生词本 = 本档及以上（本书全部词），作熟词本 = 低于本档（ladder base 文件 ∪ 同组更低各档自身词，见 BookCatalog.ladders）
+   */
+  ladder?: string;
+  /** 组内单选但不是包含体系的组键（如计算机三档 'cs'，三档是嵌套的“前 N”集合）：作熟词本时就是本书自身 */
+  group?: string;
+  /** 作熟词本时的显示名（ladder 书取补集，如 cefr-b2 为“A1–B1（B2 以下）”） */
+  knownName?: string;
+  /** 数据许可，如 'CC BY-SA 4.0'（相同方式共享类许可需在界面展示） */
+  license?: string;
+  /** 数据来源链接 */
+  url?: string;
+  /** 搜索别名（中英都有，如 cet6 配“六级”“cet-6”） */
+  keywords?: string[];
 }
 
 /**
@@ -82,12 +98,25 @@ export interface WordBookRegistry {
   list(): Promise<BookMeta[]>;
   /** 加载词书；同一 id 多次调用返回同一缓存实例；未知 id 或无数据返回 undefined */
   load(id: BookId): Promise<WordBook | undefined>;
+  /**
+   * 按“作熟词本”的语义加载词书：ladder 书返回“低于本档”的补集，其它书等同 load。
+   * 结果单独缓存（与 load 的同 id 结果不同）。
+   */
+  loadAsKnown(id: BookId): Promise<WordBook | undefined>;
+}
+
+/** 包含体系（ladder）的声明 */
+export interface BookLadder {
+  /** 最底层 base 文件 id（BookDataFile 格式，不进 books 列表）：如 cefr 的 A1 段、coca 的前 3000；没有最底层文件时为 null */
+  base: BookId | null;
 }
 
 /** data/books/index.json 结构 */
 export interface BookCatalog {
   version: number;
   books: CatalogBookMeta[];
+  /** 包含体系组键 -> 声明（cefr -> cefr-a1、coca -> coca-top），作熟词本求补集时使用 */
+  ladders?: Record<string, BookLadder>;
 }
 
 /**

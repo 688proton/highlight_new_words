@@ -5,15 +5,16 @@ import type { Dictionary } from '@/core/dict/types';
 import { createLemmatizer } from '@/core/lemma';
 import { WordMatcher } from '@/core/match/matcher';
 import { handleContentMessages, sendToBackground } from '@/core/messaging';
-import { getKnownWords } from '@/core/known/store';
-import type { Settings } from '@/core/settings/schema';
+import { getKnownWordSets, type KnownWordSets } from '@/core/known/store';
+import type { BookId, Settings } from '@/core/settings/schema';
 import { getSettings, isSiteDisabled } from '@/core/settings/store';
 import { getProviderInfo } from '@/core/source/providers';
 import { LOCAL_BOOK_KEY_PREFIX, SOURCE_BOOK_KEY_PREFIX, STORAGE_KEYS } from '@/core/storage/keys';
 import { resolveCardStyle } from '@/core/theme/resolve';
 import { bookKindOf } from '@/core/wordbook/ids';
-import { DefaultWordBookRegistry, createExtensionLoaders } from '@/core/wordbook/registry';
-import type { BookMeta, WordBook } from '@/core/wordbook/types';
+import { DefaultWordBookRegistry, createExtensionLoaders, knownBookFileIds } from '@/core/wordbook/registry';
+import { PACKAGED_CATALOG } from '@/core/wordbook/packaged-catalog';
+import type { BookDataFile, BookMeta, WordBook } from '@/core/wordbook/types';
 import { UserBooksDictionary, userWordToEntry } from '@/core/wordbook/user-book';
 import { ShadowCardView } from './card/card-view';
 import { speakWord } from './card/speak';
@@ -56,7 +57,7 @@ export async function startContentApp(appOpts: ContentAppOptions = {}): Promise<
   let dictionary: Dictionary = packagedDict;
   let loadedBooks: WordBook[] = [];
   /** 上次构建 matcher 时的熟词本与启用的用户词书词表，用于判断数据变化是否“只减少命中” */
-  let knownSnapshot = new Set<string>();
+  let knownSnapshot: KnownWordSets = { words: new Set(), builtin: new Set() };
   let userKeysSnapshot = new Set<string>();
   let engine: HighlightEngine | null = null;
   /** 最近一次构建的 matcher：卡片打开时查生词本里实际记的词（userEntriesOf） */
@@ -78,13 +79,29 @@ export async function startContentApp(appOpts: ContentAppOptions = {}): Promise<
   /** 加载启用的词书与熟词本，构造 matcher 与组合词典 */
   async function buildMatcher(): Promise<WordMatcher> {
     const loaders = createExtensionLoaders();
-    // 内置词书文件与词书目录并行请求（registry 默认先等目录再取文件；页面解析繁忙时每次往返要几十毫秒，首屏要等它）
-    const bookFiles = new Map(settings.books.enabled.filter((id) => bookKindOf(id) === 'builtin').map((id) => [id, loaders.book(id)]));
-    registry = new DefaultWordBookRegistry({ ...loaders, book: (id) => bookFiles.get(id) ?? loaders.book(id) });
+    // 内置词书文件读到设置后立即请求（registry 默认先等目录再取文件；页面解析繁忙时每次往返要几十毫秒，首屏要等它）
+    const bookFiles = new Map<BookId, Promise<BookDataFile>>();
+    const prefetch = (id: BookId) => {
+      if (!bookFiles.has(id)) bookFiles.set(id, loaders.book(id));
+    };
+    const isBuiltin = (id: BookId) => bookKindOf(id) === 'builtin';
+    settings.books.enabled.filter(isBuiltin).forEach(prefetch);
+    // 熟词本中的内置书也进首屏预取：ladder 书取补集文件（base + 更低各档，不取该档自身文件），非 ladder 书取本身文件（见 knownBookFileIds）。
+    // 用打包内联的目录同步算出文件，与生词本文件同时发出，不等目录请求，首屏不比生词本多一次串行往返（见 packaged-catalog.ts）
+    settings.knownBooks.enabled.filter(isBuiltin).forEach((id) => knownBookFileIds(PACKAGED_CATALOG, id).forEach(prefetch));
+    registry = new DefaultWordBookRegistry({
+      ...loaders,
+      catalog: () => Promise.resolve(PACKAGED_CATALOG),
+      book: (id) => {
+        prefetch(id);
+        return bookFiles.get(id)!;
+      },
+    });
     const booksReady = Promise.all(settings.books.enabled.map((id) => registry.load(id)));
     const [books, known] = await Promise.all([
       booksReady,
-      getKnownWords(),
+      // 与生词本共用 registry：同一份词书文件只加载一次；传入已有的 settings，熟词本只需最多两次 storage 往返
+      getKnownWordSets(registry, settings),
       lemmaReady,
     ]);
     loadedBooks = books.filter((b): b is WordBook => !!b && b.size > 0);
@@ -92,7 +109,7 @@ export async function startContentApp(appOpts: ContentAppOptions = {}): Promise<
     const userBooks = loadedBooks.filter((b) => b.meta.kind !== 'builtin');
     userKeysSnapshot = new Set(userBooks.flatMap((b) => [...b.words()].map((w) => `${b.meta.id}\n${w}`)));
     dictionary = new CompositeDictionary([new UserBooksDictionary(userBooks), packagedDict]);
-    currentMatcher = new WordMatcher({ lemmatizer, books: loadedBooks, known });
+    currentMatcher = new WordMatcher({ lemmatizer, books: loadedBooks, known: known.words, knownBuiltin: known.builtin });
     return currentMatcher;
   }
 
@@ -255,7 +272,11 @@ export async function startContentApp(appOpts: ContentAppOptions = {}): Promise<
     // 代码块开关/范围变化会改变扫描范围，需要重扫
     const booksChanged =
       prev.books.enabled.join() !== settings.books.enabled.join() || JSON.stringify(prev.code) !== JSON.stringify(settings.code);
-    const knownChanged = !!changes[STORAGE_KEYS.knownWords];
+    // 熟词变化：本地熟词本、熟词本启用/角色设置（knownBooks），或作熟词本的来源/本地词书数据
+    const knownChanged =
+      !!changes[STORAGE_KEYS.knownWords] ||
+      JSON.stringify(prev.knownBooks) !== JSON.stringify(settings.knownBooks) ||
+      settings.knownBooks.enabled.some((id) => changes[SOURCE_BOOK_KEY_PREFIX + id] || changes[LOCAL_BOOK_KEY_PREFIX + id]);
     // 只关心启用的用户词书的数据键（索引键变化仅影响元数据，不必重扫）
     const userBooksChanged = settings.books.enabled.some(
       (id) => changes[SOURCE_BOOK_KEY_PREFIX + id] || changes[LOCAL_BOOK_KEY_PREFIX + id],
@@ -270,7 +291,9 @@ export async function startContentApp(appOpts: ContentAppOptions = {}): Promise<
       const matcher = await buildMatcher();
       // 熟词只增、用户词书词条只减 -> 只会减少命中，原地复核即可；否则需要全量重扫
       const onlyShrinks =
-        [...prevKnown].every((w) => knownSnapshot.has(w)) && [...userKeysSnapshot].every((w) => prevUser.has(w));
+        [...prevKnown.words].every((w) => knownSnapshot.words.has(w)) &&
+        [...prevKnown.builtin].every((w) => knownSnapshot.builtin.has(w)) &&
+        [...userKeysSnapshot].every((w) => prevUser.has(w));
       if (onlyShrinks) engine.refreshMatches(matcher, dictionary);
       else engine.rebuild(matcher, dictionary);
     }

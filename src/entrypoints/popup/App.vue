@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { browser } from 'wxt/browser';
+import { enabledKnownBookIds } from '@/core/known/sources';
 import { sendToBackground } from '@/core/messaging';
 import { requestAllSitesAccess, speakText } from '@/core/platform';
 import { speakOnline } from '@/content/card/speak';
@@ -45,7 +46,8 @@ import {
   resolveStatusAlert,
   resolvePageStatus,
   solidSwatch,
-  toggleEnabledBook,
+  newBookChoices,
+  setNewBookEnabled,
   toggleSiteRule,
   type StatusText,
   type SyncChannel,
@@ -173,9 +175,13 @@ const enabledMetas = computed(() =>
 const enabledWordTotal = computed(() => enabledMetas.value.reduce((n, b) => n + b.size, 0));
 const markOf = (id: BookId) => resolveMarkStyle(settings.value!, id);
 
+/** 词书抽屉只做生词开关：过滤掉“仅作熟词本”的书（熟词本在设置页词书页管理） */
+const pickerBooks = computed(() => (settings.value ? newBookChoices(settings.value, books.value) : []));
+
+/** 生词开关：同 ladder / group 组内单选，并维护与熟词本的互斥（见 model.ts#setNewBookEnabled） */
 function toggleBook(id: BookId, on: boolean) {
   if (!settings.value) return;
-  settings.value.books.enabled = toggleEnabledBook(settings.value.books.enabled, id, on, books.value);
+  setNewBookEnabled(settings.value, id, on, books.value);
 }
 
 // ---------------- 高亮样式预设 ----------------
@@ -288,7 +294,13 @@ function closeSearch() {
 }
 
 const knownList = computed(() => recentKnownWords(data.known.value, 200).map((k) => k.word));
+/** 标签页只列本地熟词本（可撤销的“认识”记录），计数也只算本地熟词本 */
 const knownTotal = computed(() => Object.keys(data.known.value.words).length);
+/**
+ * 另外生效的熟词本（内置书、本地导入书、来源熟词本，见 core/known/sources.ts#isEffectiveKnownBook）：
+ * 任意词书都能作熟词本后，只显示本地计数会让人以为熟词本没生效，在熟词标签里补一句说明
+ */
+const knownBookCount = computed(() => (settings.value ? enabledKnownBookIds(settings.value, books.value).length : 0));
 /** 本页不在高亮（未授权 / 关闭 / 未注入）时不列旧数据，与角标“—”和空态说明一致 */
 const sourceWords = computed(() =>
   tab.value === 'page' ? (pageStatus.value === 'active' ? data.pageLemmas.value : []) : knownList.value,
@@ -819,7 +831,8 @@ onBeforeUnmount(() => {
             本页生词<span class="count" :class="{ na: pageStatus !== 'active' }">{{ pageCountLabel }}</span>
           </button>
           <button type="button" role="tab" :aria-selected="tab === 'known'" :class="{ on: tab === 'known' }" @click="tab = 'known'">
-            熟词本<span class="count">{{ knownTotal }}</span>
+            <!-- 计数只含本地熟词本；作熟词本的词书在列表下方另行说明（knownBookCount） -->
+            本地熟词<span class="count">{{ knownTotal }}</span>
           </button>
           <span class="spacer" />
           <!-- 筛选默认收成标签栏右侧的图标，点开才占一行，首屏多露出一行生词 -->
@@ -852,7 +865,7 @@ onBeforeUnmount(() => {
           />
           <div v-else class="empty">
             <template v-if="query">没有匹配“{{ query }}”的单词</template>
-            <template v-else-if="tab === 'known'">还没有熟词。点生词右侧的 <PopupIcon name="check-check" :size="14" class="inline-icon" /> 即可标为熟词，之后不再高亮</template>
+            <template v-else-if="tab === 'known'">还没有标记的熟词。点生词右侧的 <PopupIcon name="check-check" :size="14" class="inline-icon" /> 即可标为熟词，之后不再高亮</template>
             <template v-else-if="pageStatus === 'active'">本页没有命中启用词书的生词</template>
             <!-- 授权的唯一主按钮在本站卡片上，这里只说明 -->
             <template v-else-if="pageStatus === 'no-access'">授权后显示本页生词</template>
@@ -863,6 +876,9 @@ onBeforeUnmount(() => {
           </button>
           <p v-if="tab === 'known' && knownTotal > knownList.length && !query" class="foot-note">
             仅显示最近 {{ knownList.length }} 个，<a href="#" @click.prevent="openOptions(OPTIONS_ROUTES.known)">管理全部熟词</a>
+          </p>
+          <p v-if="tab === 'known' && knownBookCount > 0 && !query" class="foot-note">
+            另有 {{ knownBookCount }} 本词书作熟词本，其中的词同样不高亮，<a href="#" @click.prevent="openOptions(OPTIONS_ROUTES.known)">查看熟词本</a>
           </p>
         </div>
         <!-- 列表折叠时（桌面卡片内滚动约 5 行 / 触屏前 12 行）给出明确的“查看全部”入口，两端文案一致 -->
@@ -911,7 +927,7 @@ onBeforeUnmount(() => {
     </footer>
 
     <BottomSheet v-model="pickerOpen" title="切换词书" subtitle="可多选组合；先启用的词书优先决定高亮颜色">
-      <BookPicker :books="books" :enabled="settings.books.enabled" :mark-of="markOf" @toggle="toggleBook" />
+      <BookPicker :books="pickerBooks" :enabled="settings.books.enabled" :mark-of="markOf" @toggle="toggleBook" />
       <template #footer>
         <button type="button" class="btn" @click="openOptions(OPTIONS_ROUTES.books)">管理与排序</button>
         <button type="button" class="btn primary" @click="pickerOpen = false">完成</button>

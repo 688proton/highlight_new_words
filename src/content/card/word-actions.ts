@@ -1,4 +1,4 @@
-import { effectiveBookRole } from '@/core/known/sources';
+import { effectiveAddTargets, effectiveBookRole, isKnownLocalBook } from '@/core/known/sources';
 import { PackagedDictionary } from '@/core/dict/packaged';
 import type { DictEntry } from '@/core/dict/types';
 import { sendToBackground } from '@/core/messaging';
@@ -61,12 +61,6 @@ export interface AddTargetOption {
 /** “我的生词本”的显示名（与 background/known.ts 一致） */
 export const MY_WORDS_NAME = '我的生词本';
 
-/** 设置中的默认加入目标；为空时 background 退回“我的生词本” */
-export function defaultAddTargets(settings: Pick<Settings, 'wordActions'>): BookId[] {
-  const ids = [...new Set(settings.wordActions.addTargets)];
-  return ids.length ? ids : [MY_WORDS_BOOK_ID];
-}
-
 /** 来源词书显示名 */
 export function sourceBookName(state: Pick<SourceBookState, 'providerId' | 'name' | 'remoteId'>): string {
   return `${getProviderInfo(state.providerId)?.name ?? state.providerId} · ${state.name || state.remoteId}`;
@@ -84,16 +78,19 @@ function addBlockReason(state: SourceBookState | undefined, settings: Settings):
 /**
  * 组装“加入生词本”候选目标（纯函数，便于单测）：
  * 本地词书（含尚未创建的“我的生词本”）在前，来源生词本在后；默认目标即使不可用也列出（置灰并说明原因），
- * 来源熟词本（如欧路“已掌握”）不作为加入目标。
+ * 来源熟词本（如欧路“已掌握”）、已作熟词本的本地书不作为加入目标。
  */
 export function buildAddTargets(settings: Settings, sources: SourceBookIndex, locals: LocalBookIndex): AddTargetOption[] {
-  const defaults = new Set(defaultAddTargets(settings));
+  // 默认目标与 background 写入同一口径（core/known/sources.ts#effectiveAddTargets）：已作熟词本的本地书不算，为空时退回“我的生词本”
+  const defaults = new Set(effectiveAddTargets(settings));
   const out: AddTargetOption[] = [];
   const localIds = Object.keys(locals.books);
   if (!localIds.includes(MY_WORDS_BOOK_ID)) {
     out.push({ id: MY_WORDS_BOOK_ID, name: MY_WORDS_NAME, remote: false, isDefault: defaults.has(MY_WORDS_BOOK_ID), note: '首次加入时自动创建' });
   }
   for (const id of localIds) {
+    // 已作熟词本的本地书不能当生词本加词（写进去反而不高亮），不列出；background 写入时同样会排除（background/known.ts#knownAddTargets）
+    if (isKnownLocalBook(settings, id)) continue;
     out.push({ id, name: locals.books[id]!.name, remote: false, isDefault: defaults.has(id) });
   }
   // 默认目标中已删除的本地词书也列出，说明为什么没写进去

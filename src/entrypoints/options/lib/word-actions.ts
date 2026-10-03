@@ -1,4 +1,4 @@
-import { effectiveBookRole } from '@/core/known/sources';
+import { effectiveBookRole, isEffectiveKnownBook } from '@/core/known/sources';
 import { LOCAL_KNOWN_BOOK_ID, MY_WORDS_BOOK_ID, type BookId, type BookRole, type Settings } from '@/core/settings/schema';
 import { getProviderInfo } from '@/core/source/providers';
 import type { BookMeta, SourceBookState } from '@/core/wordbook/types';
@@ -58,9 +58,20 @@ function sourceOption(settings: Settings, state: SourceBookState, ok: boolean, f
 
 const LOCAL_KNOWN_OPTION: TargetOption = { id: LOCAL_KNOWN_BOOK_ID, name: '本地熟词本', group: '本地', disabled: false, note: '随浏览器账号 / WebDAV 同步' };
 
-/** 本地词书选项；“我的生词本”不存在时也列出（background 首次加入时自动创建） */
-function localBookOptions(books: BookMeta[]): TargetOption[] {
-  const locals = books.filter((b) => b.kind === 'local').map((b) => ({ id: b.id, name: b.name, group: '本地', disabled: false }) as TargetOption);
+/** 本地词书作熟词本时在生词本类目标中的置灰说明 */
+export const LOCAL_BOOK_KNOWN_NOTE = '已用作熟词本，不会写入或移除';
+
+/**
+ * 本地词书选项；“我的生词本”不存在时也列出（background 首次加入时自动创建）。
+ * 已作熟词本的本地书置灰并注明（设为熟词本时 setBookUsage 已把它移出这些目标，已勾选的项由 TargetChecklist 保留、可取消）
+ */
+function localBookOptions(settings: Settings, books: BookMeta[]): TargetOption[] {
+  const locals = books
+    .filter((b) => b.kind === 'local')
+    .map((b) => {
+      const known = isEffectiveKnownBook(settings, b);
+      return { id: b.id, name: b.name, group: '本地', disabled: known, ...(known ? { note: LOCAL_BOOK_KNOWN_NOTE } : {}) } as TargetOption;
+    });
   if (!locals.some((o) => o.id === MY_WORDS_BOOK_ID)) {
     locals.unshift({ id: MY_WORDS_BOOK_ID, name: '我的生词本', group: '本地', disabled: false, note: '首次加入单词时自动创建' });
   }
@@ -77,7 +88,7 @@ export function wordActionOptions(settings: Settings, books: BookMeta[], states:
   const knownBooks = sourcesByRole(settings, states, 'known');
   return {
     /** 加入生词本：写入哪些生词本 */
-    addTargets: [...localBookOptions(books), ...newBooks.map((s) => sourceOption(settings, s, canAddSourceBook(s), '该来源不支持加词', SOURCE_OFF_WRITE_NOTE))],
+    addTargets: [...localBookOptions(settings, books), ...newBooks.map((s) => sourceOption(settings, s, canAddSourceBook(s), '该来源不支持加词', SOURCE_OFF_WRITE_NOTE))],
     /** 加入生词本时：从哪些熟词本移除 */
     addRemoveFromKnown: [
       LOCAL_KNOWN_OPTION,
@@ -86,7 +97,7 @@ export function wordActionOptions(settings: Settings, books: BookMeta[], states:
     /** 认识：写入哪些熟词本 */
     knownTargets: [LOCAL_KNOWN_OPTION, ...knownBooks.map((s) => sourceOption(settings, s, canAddSourceBook(s), '该熟词本只读，不能写入', SOURCE_OFF_WRITE_NOTE))],
     /** 认识时：从哪些生词本移除 */
-    knownRemoveFrom: [...localBookOptions(books), ...newBooks.map((s) => sourceOption(settings, s, canDeleteSourceBook(s), '该来源不支持删词', SOURCE_OFF_REMOVE_NOTE))],
+    knownRemoveFrom: [...localBookOptions(settings, books), ...newBooks.map((s) => sourceOption(settings, s, canDeleteSourceBook(s), '该来源不支持删词', SOURCE_OFF_REMOVE_NOTE))],
   };
 }
 
@@ -126,24 +137,41 @@ export function setSourceBookRole(settings: Settings, state: SourceBookState, ro
   settings.knownBooks.roles = roles;
   // 角色变化后，从另一角色才有意义的单词操作目标中移除该书（如改为熟词本后不再作为“加入生词本”的目标）
   const wa = settings.wordActions;
-  const removedTargets: string[] = [];
-  const drop = (list: BookId[], label: string) => {
-    if (!list.includes(state.id)) return list;
-    removedTargets.push(label);
-    return list.filter((id) => id !== state.id);
-  };
+  let removedTargets: string[] = [];
   if (role === 'known') {
-    wa.addTargets = drop(wa.addTargets, '加入生词本时写入');
-    if (Array.isArray(wa.knownRemoveFrom)) wa.knownRemoveFrom = drop(wa.knownRemoveFrom, '标记熟词时移除');
+    removedTargets = dropNewBookTargets(settings, state.id);
     settings.books.enabled = settings.books.enabled.filter((id) => id !== state.id);
     if (!settings.knownBooks.enabled.includes(state.id)) settings.knownBooks.enabled = [...settings.knownBooks.enabled, state.id];
   } else {
+    const drop = (list: BookId[], label: string) => {
+      if (!list.includes(state.id)) return list;
+      removedTargets.push(label);
+      return list.filter((id) => id !== state.id);
+    };
     wa.knownTargets = drop(wa.knownTargets, '标记熟词时写入');
     wa.addRemoveFromKnown = drop(wa.addRemoveFromKnown, '加入生词本时从熟词本移除');
     settings.knownBooks.enabled = settings.knownBooks.enabled.filter((id) => id !== state.id);
     if (!settings.books.enabled.includes(state.id)) settings.books.enabled = [...settings.books.enabled, state.id];
   }
   return { removedTargets };
+}
+
+/**
+ * 词书改作熟词本时，从只对生词本有意义的单词操作目标中移除它（“加入生词本时写入”“标记熟词时移除”），
+ * 返回被移除的目标名称（界面提示用）。来源书（setSourceBookRole）与本地书（setBookUsage）共用。
+ */
+export function dropNewBookTargets(settings: Settings, id: BookId): string[] {
+  const wa = settings.wordActions;
+  const removed: string[] = [];
+  if (wa.addTargets.includes(id)) {
+    wa.addTargets = wa.addTargets.filter((x) => x !== id);
+    removed.push('加入生词本时写入');
+  }
+  if (Array.isArray(wa.knownRemoveFrom) && wa.knownRemoveFrom.includes(id)) {
+    wa.knownRemoveFrom = wa.knownRemoveFrom.filter((x) => x !== id);
+    removed.push('标记熟词时移除');
+  }
+  return removed;
 }
 
 /** 启用/停用来源熟词本 */

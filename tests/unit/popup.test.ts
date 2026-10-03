@@ -16,7 +16,6 @@ import {
   solidSwatch,
   summarizeCloudSync,
   summarizeSourceSync,
-  toggleEnabledBook,
   toggleSiteRule,
   syncFixVerb,
   resolveStatusAlert,
@@ -27,6 +26,7 @@ import {
   markKnownToast,
   presetScrollLeft,
 } from '@/entrypoints/popup/model';
+import { toggleEnabledBooks } from '@/core/wordbook/enable';
 import type { BookMeta, SourceBookState } from '@/core/wordbook/types';
 import type { BackendSyncStatus, SyncStatus } from '@/core/sync/types';
 import type { StatusItem } from '@/core/messaging/protocol';
@@ -72,23 +72,28 @@ describe('popup model', () => {
     expect(toggleSiteRule(['ample.com'], 'example.com', true)).toEqual(['ample.com']);
   });
 
-  it('toggleEnabledBook 启用追加到末尾、停用移除且不重复', () => {
-    expect(toggleEnabledBook(['cet6', 'gre'], 'cet4', true)).toEqual(['cet6', 'gre', 'cet4']);
-    expect(toggleEnabledBook(['cet6', 'gre'], 'cet6', false)).toEqual(['gre']);
-    expect(toggleEnabledBook(['cet6'], 'cet6', true)).toEqual(['cet6']);
-    // 难度分级、词频分级组内单选：启用一档时停用同组其他档，其他分类不受影响
+  it('toggleEnabledBooks 启用追加到末尾、停用移除且不重复', () => {
+    expect(toggleEnabledBooks(['cet6', 'gre'], 'cet4', true, [])).toEqual(['cet6', 'gre', 'cet4']);
+    expect(toggleEnabledBooks(['cet6', 'gre'], 'cet6', false, [])).toEqual(['gre']);
+    expect(toggleEnabledBooks(['cet6'], 'cet6', true, [])).toEqual(['cet6']);
+    // 同 ladder（难度分级、词频分级）组内单选：启用一档时停用同组其他档，其他书不受影响
     const metas = [
-      { id: 'cefr-b1', category: 'level' },
-      { id: 'cefr-b2', category: 'level' },
-      { id: 'coca-3k', category: 'frequency' },
-      { id: 'coca-5k', category: 'frequency' },
+      { id: 'cefr-b1', category: 'level', ladder: 'cefr' },
+      { id: 'cefr-b2', category: 'level', ladder: 'cefr' },
+      { id: 'coca-3k', category: 'frequency', ladder: 'coca' },
+      { id: 'coca-5k', category: 'frequency', ladder: 'coca' },
       { id: 'cet4', category: 'exam' },
       { id: 'cet6', category: 'exam' },
+      { id: 'cs-250', category: 'domain', group: 'cs' },
+      { id: 'cs-500', category: 'domain', group: 'cs' },
     ] as BookMeta[];
-    expect(toggleEnabledBook(['cet4', 'cefr-b1', 'coca-3k'], 'cefr-b2', true, metas)).toEqual(['cet4', 'coca-3k', 'cefr-b2']);
-    expect(toggleEnabledBook(['cet4', 'cefr-b2', 'coca-3k'], 'coca-5k', true, metas)).toEqual(['cet4', 'cefr-b2', 'coca-5k']);
-    expect(toggleEnabledBook(['cet4'], 'cet6', true, metas)).toEqual(['cet4', 'cet6']);
-    expect(toggleEnabledBook(['cefr-b2', 'coca-5k'], 'coca-5k', false, metas)).toEqual(['cefr-b2']);
+    expect(toggleEnabledBooks(['cet4', 'cefr-b1', 'coca-3k'], 'cefr-b2', true, metas)).toEqual(['cet4', 'coca-3k', 'cefr-b2']);
+    expect(toggleEnabledBooks(['cet4', 'cefr-b2', 'coca-3k'], 'coca-5k', true, metas)).toEqual(['cet4', 'cefr-b2', 'coca-5k']);
+    expect(toggleEnabledBooks(['cet4'], 'cet6', true, metas)).toEqual(['cet4', 'cet6']);
+    expect(toggleEnabledBooks(['cefr-b2', 'coca-5k'], 'coca-5k', false, metas)).toEqual(['cefr-b2']);
+    // group（计算机三档）同样组内单选；只有 category 没有 ladder/group 的书不再单选
+    expect(toggleEnabledBooks(['cs-250', 'cet4'], 'cs-500', true, metas)).toEqual(['cet4', 'cs-500']);
+    expect(toggleEnabledBooks(['x1'], 'x2', true, [{ id: 'x1', category: 'level' }, { id: 'x2', category: 'level' }] as BookMeta[])).toEqual(['x1', 'x2']);
   });
 
   it('groupBooks 按 用户/考试/词频 分组并丢弃空组', () => {

@@ -1,5 +1,8 @@
 import type { StatusSummary } from '@/core/messaging/protocol';
 import { SOURCE_NOT_CONNECTED_TEXT } from '@/core/source/connect-status';
+import type { Settings } from '@/core/settings/schema';
+import type { BookMeta } from '@/core/wordbook/types';
+import { newBookChoices } from '../../entrypoints/popup/model';
 
 /**
  * 悬浮球的纯逻辑（无 DOM 依赖，便于单测）：显示条件、位置吸附与夹取、点按位置取词、拖动取词的准星位置、隐藏站点规则。
@@ -189,4 +192,22 @@ export function dragAimPoint(centerX: number, centerY: number, viewportW: number
 /** 取词点是否真的落在单词框内（caretRangeFromPoint 在空白处也会返回最近的字符），tol 为四周容差 */
 export function pointInRect(r: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'>, x: number, y: number, tol: number): boolean {
   return x >= r.left - tol && x <= r.right + tol && y >= r.top - tol && y <= r.bottom + tol;
+}
+
+/** 悬浮球快捷设置直接列出的词书分类：难度分级、考试、词频分级（其余分类在选项页词书页管理） */
+const QUICK_BOOK_CATEGORIES: ReadonlySet<string> = new Set(['level', 'exam', 'frequency']);
+
+/**
+ * 悬浮球快捷设置的词书 chip：只做生词开关，先过滤掉“仅作熟词本”的书（popup/model.ts#newBookChoices）；
+ * 列出已启用的（排在前面，保持启用顺序）+ 难度/考试/词频三组中未启用的，其余（通用核心词、专业领域、未启用的用户词书）
+ * 不逐个列出，由菜单末尾的“全部词书…”打开选项页，避免 30 多个 chip 刷屏。
+ * @returns chips 要列出的书；more 是否还有未列出的书（决定是否显示“全部词书…”）
+ */
+export function quickBookChips(settings: Pick<Settings, 'books' | 'knownBooks'>, books: readonly BookMeta[]): { chips: BookMeta[]; more: boolean } {
+  const choices = newBookChoices(settings, books);
+  const byId = new Map(choices.map((b) => [b.id, b]));
+  const enabled = settings.books.enabled.map((id) => byId.get(id)).filter((b): b is BookMeta => !!b);
+  const rest = choices.filter((b) => !settings.books.enabled.includes(b.id) && b.kind === 'builtin' && QUICK_BOOK_CATEGORIES.has(b.category));
+  const chips = [...enabled, ...rest];
+  return { chips, more: chips.length < choices.length };
 }

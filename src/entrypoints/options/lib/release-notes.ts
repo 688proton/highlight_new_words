@@ -4,9 +4,9 @@ import { STORAGE_KEYS } from '@/core/storage/keys';
 
 /**
  * 升级后首次打开选项页时显示的“更新说明”：只写与旧版或直觉不同的行为，每条一句话，并给出去设置的位置。
- * 内容变化时递增 RELEASE_NOTES_VERSION，已读版本存在 storage.local `uiNotesSeen`。
+ * 内容变化时递增 RELEASE_NOTES_VERSION，已读版本存在 storage.local `uiNotesSeen`，与当前版本相等才算已读（不是“不低于”，版本只递增；自动化脚本要跳过弹窗时写入当前版本号）。
  */
-export const RELEASE_NOTES_VERSION = '3.0';
+export const RELEASE_NOTES_VERSION = '3.1';
 
 export interface ReleaseNote {
   title: string;
@@ -16,6 +16,16 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    title: '任意词书都能作熟词本',
+    body: '词书页每本书有“生词”“熟词”两个按钮：学过的考试书点“熟词”，其中的词不再高亮。难度/词频分级点“熟词”表示“低于该档”的词都已掌握，可与生词档同时选；计算机三档也可生词、熟词各选一档。组标题“全选”会跳过作熟词本的书。',
+    link: { page: 'books', anchor: 'cat-exam', label: '去设置' },
+  },
+  {
+    title: '新增通用核心词与专业领域词书',
+    body: 'NGSL 通用核心词、口语核心词，以及学术科研、商务、职场、医学、计算机等领域词表；词书页顶部可搜索、按用法筛选，分组可折叠。',
+    link: { page: 'books', anchor: 'cat-core', label: '查看' },
+  },
   {
     title: '欧路词典改用 OpenAPI token',
     body: '填写 token 后可按分类同步、加词删词，并把“已掌握单词”作为熟词本。不填时仍按旧方式只同步“全部生词”。',

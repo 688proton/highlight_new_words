@@ -553,6 +553,24 @@ describe('word-actions', () => {
     expect(out[1]!.name).toContain('无标签');
   });
 
+  it('buildAddTargets：已作熟词本的本地书不列出，默认目标只剩它时退回“我的生词本”（与 background 同口径）', () => {
+    const settings = createDefaultSettings();
+    settings.knownBooks.enabled = ['local:kn'];
+    settings.wordActions.addTargets = ['local:kn'];
+    const locals = {
+      books: {
+        'local:kn': { id: 'local:kn', name: '托福熟词', format: 'txt' as const, wordCount: 1, createdAt: 1, updatedAt: 1 },
+        'local:b': { id: 'local:b', name: '导入', format: 'txt' as const, wordCount: 1, createdAt: 1, updatedAt: 1 },
+      },
+      removed: {},
+    };
+    const out = buildAddTargets(settings, { books: {}, providers: {} }, locals);
+    expect(out.map((t) => [t.id, t.isDefault])).toEqual([
+      ['local:mine', true],
+      ['local:b', false],
+    ]);
+  });
+
   it('knownNotice / addNotice / removeNotice / undoKnownNotice / describePreview', () => {
     const known = {
       ok: true,

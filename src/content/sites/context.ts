@@ -21,7 +21,8 @@ export interface PageExtrasDeps {
   getDictionary(): Dictionary;
   lemmatizer: Lemmatizer;
   getLoadedBooks(): WordBook[];
-  getKnown(): ReadonlySet<string>;
+  /** 生效熟词：words 宽口径（本地/来源/本地词书熟词本），builtin 为内置词书熟词本（只按屈折判断），见 core/known/store.ts#KnownWordSets */
+  getKnown(): { words: ReadonlySet<string>; builtin: ReadonlySet<string> };
   /** 本页高亮词条（engine.matchedLemmas；引擎未运行时为空） */
   getPageLemmas(): string[];
   /** 乐观移除页面高亮（engine.removeLemma） */
@@ -49,7 +50,10 @@ export function startPageExtras(deps: PageExtrasDeps): PageExtras {
     getCard: deps.getCard,
     openCard: deps.openCard,
     lookupMany: (words) => deps.getDictionary().lookupMany(words),
-    createMatcher: () => new WordMatcher({ lemmatizer: deps.lemmatizer, books: deps.getLoadedBooks(), known: deps.getKnown() }),
+    createMatcher: () => {
+      const known = deps.getKnown();
+      return new WordMatcher({ lemmatizer: deps.lemmatizer, books: deps.getLoadedBooks(), known: known.words, knownBuiltin: known.builtin });
+    },
     lemmaCandidates: (word) => deps.lemmatizer.candidates(word),
     pageLemmas: deps.getPageLemmas,
     markKnown: async (lemma, surface) => {

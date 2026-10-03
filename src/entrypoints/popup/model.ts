@@ -1,10 +1,11 @@
 import type { BookCategory, BookMeta } from '@/core/wordbook/types';
-import { toggleEnabledBooks } from '@/core/wordbook/enable';
+import { crossTableExclusiveIds, toggleEnabledBooks } from '@/core/wordbook/enable';
+import { isKnownOnlyBook } from '@/core/known/sources';
 import type { KnownWordsData } from '@/core/known/types';
 import type { StatusItem, StatusLevel } from '@/core/messaging/protocol';
 import { SOURCE_NOT_CONNECTED_TEXT } from '@/core/source/connect-status';
 import type { BackendSyncStatus, SyncStatus } from '@/core/sync/types';
-import type { BookId } from '@/core/settings/schema';
+import type { BookId, Settings } from '@/core/settings/schema';
 
 /**
  * popup 的纯逻辑（无 DOM / browser 依赖，便于单测）：页面状态判定、同步状态文案、词书分组与启用切换等。
@@ -118,9 +119,11 @@ const CATEGORY_TITLES: Record<BookCategory, string> = {
   level: '难度分级',
   exam: '考试分级',
   frequency: '词频分级',
+  core: '通用核心词',
+  domain: '专业领域',
   other: '其他',
 };
-const CATEGORY_ORDER: BookCategory[] = ['user', 'level', 'exam', 'frequency', 'other'];
+const CATEGORY_ORDER: BookCategory[] = ['user', 'level', 'exam', 'frequency', 'core', 'domain', 'other'];
 
 export interface BookGroup {
   category: BookCategory;
@@ -128,7 +131,7 @@ export interface BookGroup {
   books: BookMeta[];
 }
 
-/** 按类别分组（用户词书 → 难度分级 → 考试 → 词频 → 其他），组内保持 registry 顺序（内置词书按 level） */
+/** 按类别分组（用户词书 → 难度分级 → 考试 → 词频 → 通用核心词 → 专业领域 → 其他），组内保持 registry 顺序（内置词书按 level） */
 export function groupBooks(books: BookMeta[]): BookGroup[] {
   return CATEGORY_ORDER.map((category) => ({
     category,
@@ -137,10 +140,28 @@ export function groupBooks(books: BookMeta[]): BookGroup[] {
   })).filter((g) => g.books.length > 0);
 }
 
-/** 启用/停用词书：启用时追加到末尾（不改变已有优先级），停用时移除；难度分级、词频分级组内单选 */
-export function toggleEnabledBook(enabled: BookId[], id: BookId, on: boolean, books: readonly BookMeta[] = []): BookId[] {
-  // 难度分级、词频分级组内单选，见 core/wordbook/enable.ts
-  return toggleEnabledBooks(enabled, id, on, books);
+/**
+ * popup / 悬浮球快捷设置只做生词开关：过滤掉“仅作熟词本”的书（来源熟词本、作熟词本的考试书/本地书等，见 core/known/sources.ts#isKnownOnlyBook）。
+ * ladder 书（难度/词频分级）同一档可以同时作生词本，保留；group 书（计算机三档）只过滤作熟词本的那一档，同组其它档照常列出。
+ * popup 的开关（setNewBookEnabled）启用时会把同一本书移出熟词本，所以先在这里过滤，不让用户在 popup 里一点就悄悄改掉熟词本用法。
+ */
+export function newBookChoices(settings: Pick<Settings, 'books' | 'knownBooks'>, books: readonly BookMeta[]): BookMeta[] {
+  return books.filter((b) => !isKnownOnlyBook(settings, b));
+}
+
+/**
+ * popup / 悬浮球的生词开关（直接改 settings）：在组内单选（toggleEnabledBooks）的基础上保持生词本与熟词本互斥——
+ * 启用为生词本时，从熟词本中移除与它互斥的书（非 ladder 内置书、本地书与计算机三档这类 group 书都只移除自身，
+ * ladder 书两表可同时，见 core/wordbook/enable.ts#crossTableExclusiveIds），不在 knownBooks.enabled 里留下读取时被生词本覆盖的失效 id。
+ * 来源书的熟词本由角色决定，不动。列表本身应先用 newBookChoices 过滤，这里兜底旧设置、同步冲突等情况。
+ * @param books 词书元数据（判断单选组、互斥范围）；查不到这本书时只改生词本
+ */
+export function setNewBookEnabled(settings: Pick<Settings, 'books' | 'knownBooks'>, id: BookId, on: boolean, books: readonly BookMeta[]): void {
+  settings.books.enabled = toggleEnabledBooks(settings.books.enabled, id, on, books);
+  const meta = books.find((b) => b.id === id);
+  if (!on || !meta || meta.kind === 'source') return;
+  const drop = crossTableExclusiveIds(meta);
+  settings.knownBooks.enabled = settings.knownBooks.enabled.filter((b) => !drop.has(b));
 }
 
 /** 词数展示：1234 -> 1,234；>= 10000 -> 1.2万 */

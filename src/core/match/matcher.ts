@@ -16,15 +16,21 @@ export interface WordMatcherOptions {
   lemmatizer: Lemmatizer;
   /** 已加载的启用词书，顺序即优先级 */
   books: WordBook[];
-  /** 熟词本（小写） */
+  /** 熟词本（小写）：本地熟词本、来源熟词本、本地词书熟词本，页面词的任一候选（含派生词根）命中即为熟词 */
   known: ReadonlySet<string>;
+  /**
+   * 内置词书熟词本（小写原形，ladder 书已是“低于本档”的补集）：只按原词与屈折原形判断，不用派生词根，
+   * 避免大词表误伤派生词（熟词表有 care 时 careless、carelessly 仍按生词判断）。
+   */
+  knownBuiltin?: ReadonlySet<string>;
 }
 
 /**
  * 匹配服务：surface -> {lemma, bookIds}。
  *
  * 规则：
- * 1. 熟词优先：surface 的任一候选原形在熟词本中则不匹配（known wins）
+ * 1. 熟词优先：surface 的任一候选原形在熟词本中则不匹配（known wins）；内置词书熟词本只看原词与屈折原形（见 knownBuiltin），
+ *    但选 lemma 时若先走到内置熟词（命中生词本前的候选或选出的 lemma 本身是内置熟词）同样不匹配
  * 2. 按候选顺序（原词优先，其次还原形式）找到第一个出现在任一启用词书中的候选作为 lemma
  * 3. bookIds 收集包含该 lemma 的全部启用词书
  * 结果按小写 surface 缓存，同一页面重复单词只计算一次。
@@ -104,12 +110,38 @@ export class WordMatcher {
     return this.opts.lemmatizer.analyze?.(surface).inflections[0];
   }
 
+  /**
+   * 页面词是否命中内置词书熟词本：只比对原词、去所有格后的形式与屈折原形（不含派生词根）。
+   * 规则兜底（非查表）且以 -er/-est 结尾时不采用屈折候选：表外词多为施事名词（runner），规则会误还原成 run（与 inflectionLemmas 一致）。
+   * 页面词本身就是某本启用内置生词本的词条时不按屈折判断：内置词书构建时已滤掉屈折形式，仍收录的 electronics、lyrics、
+   * goods、customs、misleading、limited 是独立词条（-ics 学科名、复数专用名词、形容词化分词），不是 electronic、good、limit 的变形，
+   * 熟词本有原形时不应剔除（用户词书可能记了任意变形，如 studies，不适用此例外）。
+   * 词形还原器不提供 analyze 时退化为 candidates 首项（原词本身）。
+   */
+  private knownBuiltinHas(key: string, candidates: string[]): boolean {
+    const set = this.opts.knownBuiltin;
+    if (!set?.size) return false;
+    const a = this.opts.lemmatizer.analyze?.(key);
+    if (!a) return set.has(candidates[0] ?? key);
+    if (set.has(key)) return true;
+    if (this.opts.books.some((b) => b.meta.kind === 'builtin' && b.has(key))) return false;
+    if (set.has(a.base)) return true;
+    if (!a.fromTable && /(?:er|est)$/.test(a.base)) return false;
+    return a.inflections.some((l) => set.has(l));
+  }
+
   private compute(key: string): MatchResult | null {
     const { lemmatizer, books, known } = this.opts;
     if (books.length === 0) return null;
     const candidates = lemmatizer.candidates(key);
     if (candidates.some((c) => known.has(c) || this.knownLemmas.has(c))) return null;
+    if (this.knownBuiltinHas(key, candidates)) return null;
+    const knownBuiltin = this.opts.knownBuiltin;
     for (const c of candidates) {
+      // 熟词优先：候选按“原词 → 屈折 → 派生词根”由近到远排列，先走到内置熟词（abusive -> abuse、relevance -> relevant）
+      // 说明页面词要退回到一个熟词或更远的词根才能命中生词本，此时不高亮，避免卡片把熟词 abuse 当生词展示。
+      // 原词或更近的候选先命中生词本（careless 在生词本、care 是熟词）时不会走到这里，派生词仍按自身判断
+      if (knownBuiltin?.has(c)) return null;
       if (!books.some((b) => this.bookHas(b, c))) continue;
       // 只命中了用户词书里的变形条目（studies）：lemma 归一到屈折原形，卡片“认识”/删除写入原形，不再产生变形熟词。
       // 规则兜底的原形可能不存在（abandone），只有查表结果或某本词书收录该原形时才归一
@@ -119,6 +151,8 @@ export class WordMatcher {
         !books.some((b) => b.meta.kind === 'builtin' && b.has(c)) &&
         (lemmatizer.analyze?.(c).fromTable || books.some((b) => b.has(base)));
       const lemma = normalize ? base : c;
+      // 变形条目归一后的原形是内置熟词（生词本记 studies、熟词本有 study）：同样熟词优先
+      if (knownBuiltin?.has(lemma)) return null;
       const bookIds = books.filter((b) => this.bookHas(b, lemma) || b.has(c)).map((b) => b.meta.id);
       return { surface: key, lemma, bookIds };
     }

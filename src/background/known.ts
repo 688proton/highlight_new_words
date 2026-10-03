@@ -1,6 +1,6 @@
 import { browser } from 'wxt/browser';
-import { getKnownData, getKnownWords, setKnownWords } from '@/core/known/store';
-import { effectiveBookRole } from '@/core/known/sources';
+import { getKnownData, isKnownWord, setKnownWords } from '@/core/known/store';
+import { effectiveAddTargets, effectiveBookRole, isKnownLocalBook } from '@/core/known/sources';
 import { PackagedDictionary } from '@/core/dict/packaged';
 import type { Dictionary } from '@/core/dict/types';
 import { createLemmatizer } from '@/core/lemma';
@@ -160,7 +160,7 @@ export function resolveKnownRemoveFrom(settings: Settings, sources: SourceBookIn
   if (conf !== 'auto') return [...new Set(conf)];
   // 本地“加入生词本”的目标（默认“我的生词本”）：认识后不再是生词，一并移出（本地移除可完整撤销），
   // 否则卡片会同时显示“已收藏”和“熟词”
-  const localAddTargets = addTargetsOf(settings).filter((id) => parseBookId(id).kind === 'local');
+  const localAddTargets = effectiveAddTargets(settings).filter((id) => parseBookId(id).kind === 'local');
   const sourceBooks = Object.values(sources.books)
     .filter((b) => {
       const src = settings.sources[b.providerId];
@@ -252,7 +252,11 @@ async function addLocalWords(id: BookId, words: UserWord[]): Promise<boolean> {
   });
   if (!exists) {
     const settings = await getSettings();
-    if (!settings.books.enabled.includes(id)) await patchSettings({ books: { enabled: [id, ...settings.books.enabled] } });
+    // 走到这里的只有首次创建的“我的生词本”：它不能作熟词本（即使因手改设置或同步出现在 knownBooks.enabled 中也不算，
+    // 见 isEffectiveKnownBook），照常放回生词本。已作熟词本的其它本地书在写入前已由 effectiveAddTargets/knownAddTargets 排除
+    if (!settings.books.enabled.includes(id)) {
+      await patchSettings({ books: { enabled: [id, ...settings.books.enabled] } });
+    }
   }
   return true;
 }
@@ -448,8 +452,8 @@ export async function unmarkKnown(lemma: string): Promise<{ ok: boolean; restore
     for (const f of res.fallback) notes.push(`“${f.from}”不支持加词，已加回“${f.to}”`);
     if (res.lost.length) notes.push(`${[...new Set(res.lost)].join('、')} 已从来源删除，无法自动加回`);
   }
-  // 仍在启用的来源熟词本中（如欧路“已掌握”）时提醒：本地撤销后仍不会高亮
-  if ((await getKnownWords()).has(target)) notes.push('该词仍在启用的来源熟词本中，依然不会高亮');
+  // 仍在启用的其他熟词本中（如欧路“已掌握”、作熟词本的词书）时提醒：本地撤销后仍不会高亮
+  if (await isKnownWord(target)) notes.push('该词仍在启用的熟词本中，依然不会高亮');
   const uniq = [...new Set(restored)];
   const message = ['已撤销', ...(uniq.length ? [`已加回 ${uniq.join('、')}`] : []), ...notes].join('；');
   return { ok: true, restored: uniq, message };
@@ -457,21 +461,15 @@ export async function unmarkKnown(lemma: string): Promise<{ ok: boolean; restore
 
 // ---------------- 加入 / 移出生词本 ----------------
 
-/** addTargets 为空时退回“我的生词本” */
-function addTargetsOf(settings: Settings): BookId[] {
-  const ids = [...new Set(settings.wordActions.addTargets)];
-  return ids.length ? ids : [MY_WORDS_BOOK_ID];
-}
-
 /**
  * 卡片传入的 targets 只保留已知的生词本：存在的本地词书（“我的生词本”不存在时会自动创建，也保留）、
- * 已登记的来源词书；本地熟词本与未知 id 过滤掉。只读来源（如欧路“已掌握”）保留，写入时跳过并在结果中说明。
+ * 已登记的来源词书；本地熟词本、已作熟词本的本地书与未知 id 过滤掉。只读来源（如欧路“已掌握”）保留，写入时跳过并在结果中说明。
  */
 function knownAddTargets(targets: BookId[], ctx: ActionContext): BookId[] {
   return [...new Set(targets)].filter((id) => {
     if (id === LOCAL_KNOWN_BOOK_ID) return false;
     const kind = parseBookId(id).kind;
-    if (kind === 'local') return id === MY_WORDS_BOOK_ID || !!ctx.locals.books[id];
+    if (kind === 'local') return (id === MY_WORDS_BOOK_ID || !!ctx.locals.books[id]) && !isKnownLocalBook(ctx.settings, id);
     if (kind === 'source') return !!ctx.sources.books[id];
     return false;
   });
@@ -496,11 +494,15 @@ export async function addWord(data: {
   if (data.targets) {
     writeIds = knownAddTargets(data.targets, ctx);
     if (!writeIds.length) {
-      const message = data.targets.length ? '所选生词本已不存在，未加入' : '未选择写入目标，未加入';
+      const message = !data.targets.length
+        ? '未选择写入目标，未加入'
+        : data.targets.some((id) => isKnownLocalBook(ctx.settings, id))
+          ? '所选词书已作熟词本（加入后也不会高亮），未加入；请改选生词本'
+          : '所选生词本已不存在，未加入';
       return { ok: false, lemma: target, added: [], removedKnown: [], message };
     }
   } else {
-    writeIds = addTargetsOf(ctx.settings);
+    writeIds = effectiveAddTargets(ctx.settings);
   }
   const entry: UserWord = { word: target, ...(data.trans ? { trans: data.trans } : {}), ...(data.phonetic ? { phonetic: data.phonetic } : {}) };
   const added: WordTargetResult[] = [];
@@ -542,7 +544,7 @@ export async function addWord(data: {
   const ok = added.some((a) => a.ok);
   const parts = [ok ? `已加入${added.filter((a) => a.ok).map((a) => `“${a.name}”`).join('、')}` : '加入失败'];
   parts.push(...describe(added.filter((a) => !a.ok), addedTo), ...describe(removal.results, removedFrom));
-  if ((await getKnownWords()).has(target)) parts.push('该词仍在启用的熟词本中，不会高亮（可在选项页调整熟词本）');
+  if (await isKnownWord(target)) parts.push('该词仍在启用的熟词本中，不会高亮（可在选项页调整熟词本）');
   return { ok, lemma: target, added, removedKnown: removal.results, message: parts.join('；') };
 }
 
@@ -550,7 +552,7 @@ export async function addWord(data: {
 export async function removeWord(data: { lemma: string; bookIds?: BookId[] }): Promise<RemoveWordResult> {
   const target = data.lemma.trim().toLowerCase();
   const ctx = await loadContext();
-  const ids = data.bookIds ?? addTargetsOf(ctx.settings);
+  const ids = data.bookIds ?? effectiveAddTargets(ctx.settings);
   const plan: RemovalItem[] = [];
   for (const id of ids) {
     const kind = parseBookId(id).kind;
@@ -576,7 +578,7 @@ export async function previewWordAction(data: { action: 'add' | 'known'; word: s
   const target = data.lemma.trim().toLowerCase();
   const surface = data.word.trim().toLowerCase() || target;
   const ctx = await loadContext();
-  const writeIds = data.action === 'add' ? addTargetsOf(ctx.settings) : [...new Set(ctx.settings.wordActions.knownTargets)];
+  const writeIds = data.action === 'add' ? effectiveAddTargets(ctx.settings) : [...new Set(ctx.settings.wordActions.knownTargets)];
   const write: WordActionPreviewItem[] = writeIds.map((id) => {
     const name = targetName(id, ctx);
     const remote = parseBookId(id).kind === 'source';
@@ -609,10 +611,10 @@ export async function getWordState(lemma: string): Promise<{ collected: boolean;
   const target = lemma.trim().toLowerCase();
   const settings = await getSettings();
   const collectedIn: BookId[] = [];
-  for (const id of addTargetsOf(settings)) {
+  for (const id of effectiveAddTargets(settings)) {
     const kind = parseBookId(id).kind;
     const words = kind === 'local' ? (await getLocalBook(id))?.words : kind === 'source' ? (await getSourceBook(id))?.words : undefined;
     if (words && hasOwnKey(words, target)) collectedIn.push(id);
   }
-  return { collected: collectedIn.length > 0, collectedIn, known: (await getKnownWords()).has(target) };
+  return { collected: collectedIn.length > 0, collectedIn, known: await isKnownWord(target) };
 }

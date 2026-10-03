@@ -504,3 +504,29 @@ describe('第二阶段 F1：addWord 的 targets 完全取代默认 addTargets', 
     expect((await getLocalBook(MY_WORDS_BOOK_ID))!.words.quux).toBeUndefined();
   });
 });
+
+describe('任意词书作熟词本：addWord 自动启用按生效熟词本口径判断', () => {
+  it('“我的生词本”不能作熟词本：即使出现在 knownBooks.enabled 中（旧设备/手改设置/同步），首次加词创建后照常放回生词本', async () => {
+    await patchSettings({ knownBooks: { enabled: [MY_WORDS_BOOK_ID] } });
+    const res = await addWord({ word: 'zyzzyva', lemma: 'zyzzyva' });
+    expect(res.added).toEqual([expect.objectContaining({ bookId: MY_WORDS_BOOK_ID, ok: true })]);
+    expect((await getSettings()).books.enabled[0]).toBe(MY_WORDS_BOOK_ID);
+  });
+
+  it('已作熟词本的本地书不是加词目标：卡片临时选择被拒绝、旧默认目标退回“我的生词本”、认识时不从熟词本中移出', async () => {
+    await saveLocalBook({ id: 'local:kn', name: '托福熟词', format: 'txt', words: [{ word: 'apple' }] });
+    await patchSettings({ knownBooks: { enabled: ['local:kn'] }, wordActions: { addTargets: ['local:kn'] } });
+    // 卡片只选了这本：不写入，提示改选生词本
+    const picked = await addWord({ word: 'zyzzyva', lemma: 'zyzzyva', targets: ['local:kn'] });
+    expect(picked).toMatchObject({ ok: false, added: [] });
+    expect(picked.message).toContain('已作熟词本');
+    expect((await getLocalBook('local:kn'))!.words.zyzzyva).toBeUndefined();
+    // 默认目标（同步来的旧设置仍指向它）：退回“我的生词本”
+    const res = await addWord({ word: 'zyzzyva', lemma: 'zyzzyva' });
+    expect(res.added).toEqual([expect.objectContaining({ bookId: MY_WORDS_BOOK_ID, ok: true })]);
+    expect((await getLocalBook('local:kn'))!.words.zyzzyva).toBeUndefined();
+    // 认识 apple：auto 移除目标不含熟词本里的书
+    await markKnown('apple', 'apple');
+    expect((await getLocalBook('local:kn'))!.words.apple).toBeDefined();
+  });
+});

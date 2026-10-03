@@ -47,7 +47,10 @@ export const MY_WORDS_BOOK_ID = 'local:mine';
 
 /** 熟词本（多来源）配置：本地熟词本始终生效；来源熟词本（role=known 的来源词书）按 enabled 取并集 */
 export interface KnownBooksSettings {
-  /** 启用的来源熟词本 id（src:…）；首次同步成功的 known 角色书由 background 自动加入 */
+  /**
+   * 启用的熟词本 id：可放任意词书（来源 src:…、本地 local:…、内置 id），有效性裁决见 core/known/sources.ts#isEffectiveKnownBook。
+   * 首次同步成功的 known 角色来源书由 background 自动加入；非 ladder 书与 books.enabled 互斥（选项页 setBookUsage 保证）
+   */
   enabled: BookId[];
   /** 用户为来源词书指定的角色，覆盖 provider 声明（如把欧路某个自建分组当作熟词本） */
   roles: Record<BookId, BookRole>;

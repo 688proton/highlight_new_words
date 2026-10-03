@@ -9,7 +9,7 @@ import { DefaultWordBookRegistry, createExtensionLoaders } from '@/core/wordbook
 import type { BookMeta } from '@/core/wordbook/types';
 // 与 popup / 选项页共用的纯逻辑：预设切换（含按词书重新着色）、站点规则、词书启用切换、释义截短
 import { applyPreset, presetGroups } from '../../entrypoints/options/lib/appearance';
-import { oneLineMeaning, solidSwatch, toggleEnabledBook, toggleSiteRule } from '../../entrypoints/popup/model';
+import { oneLineMeaning, setNewBookEnabled, solidSwatch, toggleSiteRule } from '../../entrypoints/popup/model';
 import { h } from '../card/h';
 import { ATTR_BOOK, ATTR_LEMMA, TAG_MARK } from '../engine/dom';
 import { markSurface } from '../engine/highlighter';
@@ -17,7 +17,7 @@ import { isYouTubeHost } from '../sites/youtube/dom';
 import type { SiteContext } from '../sites/types';
 import { bindSheetDrag, type OverlayHost } from './host';
 import { svgIcon, type FloatIcon } from './icons';
-import { syncFootText, toggleHostRule } from './model';
+import { quickBookChips, syncFootText, toggleHostRule } from './model';
 import { availableFloatActions } from './registry';
 
 type Tab = 'words' | 'settings';
@@ -290,21 +290,25 @@ export class FloatMenu {
       ),
     );
 
-    // 词书：已启用的在前
+    // 词书：只做生词开关（过滤仅作熟词本的书）；已启用的在前，其余只列难度/考试/词频三组，更多书用“全部词书…”去选项页（见 quickBookChips）
     const books = this.books;
     if (books) {
       const enabled = new Set(s.books.enabled);
-      const sorted = [...books.filter((b) => enabled.has(b.id)), ...books.filter((b) => !enabled.has(b.id))];
+      const { chips, more } = quickBookChips(s, books);
       groups.push(
         group('词书（可多选，难度/词频分级各选一档）',
           h(doc, 'div', { class: 'chips' },
-            sorted.map((b) =>
+            chips.map((b) =>
               h(doc, 'button', { type: 'button', class: 'chip', 'aria-pressed': String(enabled.has(b.id)), onclick: () =>
-                this.update((n) => void (n.books.enabled = toggleEnabledBook(n.books.enabled, b.id, !enabled.has(b.id), books))) },
+                // setNewBookEnabled：组内单选，并维护与熟词本的互斥
+                this.update((n) => setNewBookEnabled(n, b.id, !enabled.has(b.id), books)) },
                 b.short || b.name,
                 h(doc, 'span', { class: 'n' }, formatSize(b.size)),
               ),
             ),
+            more
+              ? h(doc, 'button', { type: 'button', class: 'chip', onclick: () => { this.close(); this.deps.openOptions('#books'); } }, '全部词书…')
+              : null,
           ),
         ),
       );

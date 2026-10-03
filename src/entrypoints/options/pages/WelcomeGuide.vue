@@ -8,8 +8,8 @@ import LivePreview from '../components/LivePreview.vue';
 import PresetCard from '../components/PresetCard.vue';
 import SiteAccessBanner from '../components/SiteAccessBanner.vue';
 import { applyPreset, presetGroups } from '../lib/appearance';
-import { SINGLE_CHOICE_CATEGORIES } from '@/core/wordbook/enable';
-import { formatCount, isBookEnabled, toggleBook } from '../lib/books';
+import { singleChoiceKey } from '@/core/wordbook/enable';
+import { CATEGORY_GROUPS, formatCount, isBookEnabled, orderCategoryBooks, toggleBook } from '../lib/books';
 import { useOptions } from '../lib/context';
 
 /**
@@ -21,7 +21,15 @@ const { settings, books, navigate } = useOptions();
 const step = ref(0);
 const STEPS = ['选择词书', '高亮样式', '生词本与熟词'];
 
-const builtin = computed(() => books.value.filter((b) => b.kind === 'builtin').sort((a, b) => (a.category === b.category ? a.level - b.level : a.category.localeCompare(b.category))));
+/** 引导只展示难度、考试、词频三组（通用核心词、专业领域等书留给词书页，避免首次选择过多），组内单选按 ladder / group 判断 */
+const GUIDE_CATEGORIES = ['level', 'exam', 'frequency'];
+const builtin = computed(() => books.value.filter((b) => b.kind === 'builtin'));
+const guideGroups = computed(() =>
+  CATEGORY_GROUPS.filter((g) => GUIDE_CATEGORIES.includes(g.category))
+    // 增量书紧跟其全量书（见 orderCategoryBooks）
+    .map((g) => ({ ...g, books: orderCategoryBooks(builtin.value.filter((b) => b.category === g.category)) }))
+    .filter((g) => g.books.length > 0),
+);
 const presets = presetGroups().combos.slice(0, 8);
 
 // 行内译文模式：与外观页、popup、悬浮球同一组短标签
@@ -31,6 +39,7 @@ const NEXT_ACTIONS: { icon: IconName; title: string; desc: string; page: string;
   { icon: 'cloud', title: '同步有道 / 欧路生词本', desc: '有道登录网页版、欧路填写授权 token 后一键同步，可多个生词本分别启用', page: 'sources', anchor: 'providers' },
   { icon: 'upload', title: '导入单词表', desc: 'TXT、CSV、Anki、有道 XML、欧路导出均可', page: 'sources', anchor: 'import' },
   { icon: 'known', title: '导入已掌握的词', desc: '熟词不再高亮，减少干扰', page: 'known', anchor: 'known-import' },
+  { icon: 'book', title: '把学过的考试词书设为熟词本', desc: '如已过四级：在词书页给“四级”点“熟词”，其中的词不再高亮', page: 'books', anchor: 'cat-exam' },
 ];
 
 function finish(page = 'books', anchor?: string) {
@@ -60,24 +69,27 @@ function finish(page = 'books', anchor?: string) {
 
     <section v-if="step === 0" class="body">
       <h2>想在网页上标出哪些词？</h2>
-      <p class="muted">可以多选组合，比如“六级 + 考研”；难度分级（CEFR）和词频分级各只能选一档（选 B2 已包含 C1、C2）。之后还能加入自己的生词本。</p>
-      <div class="cards">
-        <button
-          v-for="b in builtin"
-          :key="b.id"
-          type="button"
-          class="card"
-          :role="SINGLE_CHOICE_CATEGORIES.has(b.category) ? 'radio' : 'switch'"
-          :aria-checked="isBookEnabled(settings, b.id)"
-          @click="toggleBook(settings, b.id, undefined, builtin)"
-        >
-          <span class="card-top">
-            <strong>{{ b.name }}</strong>
-            <span class="check"><AppIcon v-if="isBookEnabled(settings, b.id)" name="check" :size="14" /></span>
-          </span>
-          <span class="muted">{{ formatCount(b.size) }} 词</span>
-        </button>
-      </div>
+      <p class="muted">可以多选组合，比如“六级 + 考研”；难度分级（CEFR）和词频分级各只能选一档（选 B2 已包含 C1、C2）。之后还能加入自己的生词本，或在词书页把学过的书设为熟词本。</p>
+      <template v-for="g in guideGroups" :key="g.category">
+        <h3 class="group-title">{{ g.title }}<span v-if="g.books.some((b) => singleChoiceKey(b))" class="muted">（选一档）</span></h3>
+        <div class="cards">
+          <button
+            v-for="b in g.books"
+            :key="b.id"
+            type="button"
+            class="card"
+            :role="singleChoiceKey(b) ? 'radio' : 'switch'"
+            :aria-checked="isBookEnabled(settings, b.id)"
+            @click="toggleBook(settings, b.id, undefined, books)"
+          >
+            <span class="card-top">
+              <strong>{{ b.name }}</strong>
+              <span class="check"><AppIcon v-if="isBookEnabled(settings, b.id)" name="check" :size="14" /></span>
+            </span>
+            <span class="muted">{{ formatCount(b.size) }} 词</span>
+          </button>
+        </div>
+      </template>
     </section>
 
     <section v-else-if="step === 1" class="body">
@@ -138,6 +150,8 @@ function finish(page = 'books', anchor?: string) {
 .body { display: flex; flex-direction: column; gap: 12px; }
 h2 { margin: 8px 0 0; font-size: 22px; }
 .body > p { margin: -6px 0 0; }
+.group-title { margin: 4px 0 -4px; font-size: 14px; font-weight: 650; }
+.group-title .muted { font-weight: 400; font-size: 12px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 .card { display: flex; flex-direction: column; gap: 4px; padding: 14px; border-radius: 14px; border: 1.5px solid var(--border); background: var(--surface);
   text-align: left; cursor: pointer; color: var(--text); min-height: 76px; }
