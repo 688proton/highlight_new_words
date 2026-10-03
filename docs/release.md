@@ -194,8 +194,8 @@ npm run build:firefox            # 产物 ${OUT_DIR:-.output}/firefox-mv3
 
 **商店材料**
 
-- [x] 截图与当前界面一致，否则重新 `capture.mjs` + `render.mjs`（2026-10-01 18:36 在词书与释义数据最后一次重建（18:28）之后用当前构建重新采集，含 YouTube 字幕面板与手机悬浮球；之后若再改 `public/data` 或界面，须重新采集）
-- [x] 详细描述中列出的功能都已上线，且覆盖全部功能（YouTube 字幕、悬浮球、代码块标注、卡片触发方式、加入生词本、WebDAV 与手动备份）；中文约 1,300 字符、英文约 3,700 字符，符合 Edge 250–10,000
+- [x] 截图与当前界面一致，否则重新 `capture.mjs` + `render.mjs` —— 2026-10-03 词书扩充与“词书作熟词本”改版后用当前构建全部重采：README 用的设置页截图 [options-0-welcome.png](./images/options-0-welcome.png)、[options-1-books.png](./images/options-1-books.png)（首次引导按难度/考试/词频分组单选；词书页带搜索筛选、正在使用分列生词本与熟词本、每本书的“生词”“熟词”按钮），以及商店截图 `store/images/screenshots-*`（`capture.mjs` 采桌面卡片时先打开一次让首次触发方式提示记为已看到，再重开截图；popup 熟词标签为“本地熟词”；YouTube 截图无变化，宣传图未变）
+- [x] 详细描述中列出的功能都已上线，且覆盖全部功能（YouTube 字幕、悬浮球、代码块标注、卡片触发方式、加入生词本、WebDAV 与手动备份、词书作熟词本、通用核心词与专业领域词表）；中文约 1,360 字符、英文约 3,900 字符，符合 Edge 250–10,000
 - [x] [permissions.md](../store/permissions.md) 与 manifest 权限逐项一致
 - [ ] 隐私政策已托管且可公开访问，内容与实际网络请求一致，描述中的占位网址已替换 —— 内容已与实际请求一致（含云端来源默认不连接的说明）；托管与占位网址替换待推送公开仓库后完成
 - [ ] 更新说明（GitHub Release）写明新增权限或行为变化 —— 发版时编写

@@ -142,6 +142,13 @@ const snap = async (page, name, opts = {}) => {
   await page.waitForTimeout(3000);
   await snap(page, 'desktop-article');
   const mark = await pickMark(page, 'anticipate');
+  // PC 端卡片首次打开会带一行“触发方式”提示（content/card/trigger.ts#maybeHint），可见满 1s 后记为已看到：
+  // 先打开一次让提示记下，移开关闭后再打开，商店截图里就是常态卡片
+  await mark.hover();
+  await page.waitForTimeout(1500);
+  await page.mouse.move(5, 790);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(800);
   await mark.hover();
   await page.waitForTimeout(900);
   await snap(page, 'desktop-card');

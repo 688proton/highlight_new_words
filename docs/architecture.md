@@ -59,7 +59,7 @@ flowchart LR
 
 | 分片 | 拥有的目录/文件 | 依赖的契约 |
 | --- | --- | --- |
-| data | `public/data/**`、`scripts/data/**`、`src/core/wordbook/registry.ts`（加载实现）、`src/core/dict/packaged.ts` | `BookCatalog`/`BookDataFile`/`DictShardFile`、`WordBookRegistry`、`Dictionary` |
+| data | `public/data/**`、`scripts/data/**`、`src/core/wordbook/registry.ts`（加载实现）、`src/core/wordbook/packaged-catalog.ts`（构建时内联词书目录）、`src/core/dict/packaged.ts` | `BookCatalog`/`BookDataFile`/`DictShardFile`、`WordBookRegistry`、`Dictionary` |
 | lemma | `src/core/lemma/**`、`public/data/lemma/**`（`lemma.json`）、`scripts/lemma/**`（数据生成）、`tests/fixtures/lemma-gold.tsv`（金标集） | `Lemmatizer` |
 | engine | `src/content/engine/**`、`src/content/app.ts` | `WordMatcher`、`Dictionary`、`dom.ts` 常量 |
 | card | `src/content/card/**`、`tests/unit/card*.test.ts` | `CardView`/`CardData`/`CardActions`、`CardStyle`；对外提供 `bindCardTrigger`/`registerCardTriggerZone`/trigger-config 纯函数（见 4.5“卡片触发方式”） |
@@ -68,7 +68,7 @@ flowchart LR
 | background | `src/background/**`（含来源 provider `src/background/sources/**`、熟词流程 `known.ts`）、`src/entrypoints/background.ts`、`src/core/sync/**`（storage.sync 同步层） | `BackgroundProtocol`、`SourceProvider`、settings/known/user-store |
 | floatball | `src/content/floatball/**`（通用悬浮球、取词模式）、`src/content/sites/**`（站点适配层与 `SiteContext` 实现，含 YouTube）、`tests/fixtures/youtube*`、`tests/fixtures/floatball*` | `SiteContext`、`CardView`、`registerSiteSkipRule`、popup `model.ts` 与 options `lib/appearance.ts` 的纯函数、`getStatusSummary`/`syncAll`/`markKnown`/`unmarkKnown` 消息；见 4.12 |
 
-**共享契约（改动需协调）**：`src/core/settings/**`、`src/core/messaging/**`、`src/core/storage/**`、`src/core/theme/**`、`src/core/match/**`、`src/core/source/**`、`src/core/known/**`、`src/core/wordbook/{ids,types,user-store,user-book,registry}.ts`（registry 加载实现仍归 data 分片完善）、`src/core/import/types.ts`、`src/core/sync/types.ts`、各模块 `types.ts`、`src/ui/composables/**`、`src/ui/tokens.css`、`wxt.config.ts`、`package.json`。
+**共享契约（改动需协调）**：`src/core/settings/**`、`src/core/messaging/**`、`src/core/storage/**`、`src/core/theme/**`、`src/core/match/**`、`src/core/source/**`、`src/core/known/**`、`src/core/wordbook/{ids,types,user-store,user-book,registry,enable,search}.ts`（registry 加载实现仍归 data 分片完善；`enable.ts` 为单选组与生词/熟词跨表互斥，`search.ts` 为词书搜索，选项页与 popup 共用）、`src/core/import/types.ts`、`src/core/sync/types.ts`、各模块 `types.ts`、`src/ui/composables/**`、`src/ui/tokens.css`、`wxt.config.ts`、`package.json`。
 
 测试放 `tests/unit/<分片>*.test.ts`，fixture 页面放 `tests/fixtures/`（新增文件即可，不要改他人 fixture 的已有内容）。
 
@@ -89,7 +89,7 @@ flowchart LR
 | `card.trigger` / `card.modifier` / `card.hoverDelay` | PC 端（鼠标）卡片触发方式（触屏/手机端点按打开，不受影响；触屏点按可由 `card.tapOpen` 关闭，关闭后页面生词的点按交给页面，字幕面板等注册区域与悬浮球取词不受影响；触屏长按选词查词由 `card.longPressOpen` 控制，与悬浮球是否显示无关）：`auto`（旧默认值）/`hover` 悬停；`modifier` 按住修饰键 + 悬停（v11 card 新增，旧版本收到时按悬停处理）；`click` 点击（链接中的单词第一次点击弹卡，再点一次或带修饰键点击才跳转）。`modifier` 为 `alt`（默认）/`ctrl`/`shift`/`meta`（⌘，只在 macOS 提供，其他系统按 Ctrl 处理）。`hoverDelay` 为悬停弹卡延迟（ms）：`100` 灵敏 / `250` 标准（默认）/ `400` 稳妥，档位见 `CARD_HOVER_DELAYS`；悬停与“修饰键 + 悬停”移入单词时生效，指针已在单词上再按修饰键的 180ms 不受影响（card 修复轮新增，旧设置由 `normalizeSettings` 补齐，非法值按 250）。解析与文案用 [trigger-config.ts](../src/content/card/trigger-config.ts) 的纯函数，见 4.5“卡片触发方式” |
 | `tts` | 自动发音开关、`voice`（`chrome.tts.speak` 选项）、语速 |
 | `sources[providerId]` | 按来源配置 `SourceSettings`：`enabled`（默认全部 false）、`autoSync`（每天）、`deleteOnKnown`（默认 false，`wordActions.knownRemoveFrom='auto'` 时生效）、可选 `apiToken`（本机字段；只有勾选 `credentialSync["token:<id>"]` 时才作为凭据随同步上传） |
-| `knownBooks` | 熟词本多来源：`enabled` 启用的来源熟词本 id（角色为 known 的来源词书，如欧路“已掌握单词”，首次同步成功自动加入）；`roles` 用户为来源词书指定的角色 `new`/`known`（覆盖 provider 声明）。本地熟词本始终生效，见 4.9 |
+| `knownBooks` | 熟词本多来源：`enabled` 作熟词本的词书 id，可以是任意词书——内置书、本地导入书（“我的生词本”除外）、角色为 known 的来源词书（如欧路“已掌握单词”，首次同步成功自动加入）；`roles` 用户为来源词书指定的角色 `new`/`known`（覆盖 provider 声明）。字段结构未变，不升 schema 版本、无迁移。非 ladder 书与 `books.enabled` 互斥（选项页 setter 保证，读取时 `books.enabled` 优先）；ladder 书同一档可同时在两张表。本地熟词本始终生效，见 4.9 |
 | `wordActions` | 单词操作目标（见 4.9）：`sameLemma` 同原形开关（默认开）；`addTargets` 加入生词本写入的书（默认 `local:mine` “我的生词本”）；`addRemoveFromKnown` 加入时移出的熟词本（默认本地熟词本 `known:local`）；`knownTargets` 认识时写入的熟词本（默认 `known:local`）；`knownRemoveFrom` 认识时移除的生词本，`'auto'` = 沿用各来源 `deleteOnKnown` |
 | `sync` | 本机同步配置（不参与同步）：`enabled`/`include` 为 chrome.storage.sync 后端；`webdav` 为 WebDAV 后端（`enabled/url/username/password/dir/include(+sourceBooks)/autoSync{onChange,onStartup,intervalMinutes}`），见 4.11 |
 | `credentialSync` | 凭据是否随同步上传：`token:<providerId>`（来源 API token）、`webdav`（WebDAV 连接信息含密码），默认全部 false；本字段参与设置同步，各设备一致，见 4.11 |
@@ -142,19 +142,20 @@ v2.0.1 旧键 `toggle/ttsToggle/ttsVoices/highlight*/bubble*/dictionaryType/auto
 
 | 类别 `BookKind` | id | 数据 | 元数据 |
 | --- | --- | --- | --- |
-| `builtin` 内置分级 | catalog id，如 `cet6` | 扩展包 `data/books/<id>.json` | `CatalogBookMeta` |
+| `builtin` 内置词书 | catalog id，如 `cet6` | 扩展包 `data/books/<id>.json` | `CatalogBookMeta` |
 | `source` 来源词书 | `src:<providerId>:<encodeURIComponent(remoteId)>` | `srcBook:<id>` | `SourceBookState`（同步状态） |
 | `local` 本地导入 | `local:<uuid>` | `localBook:<id>` | `LocalBookMeta`（名称/格式/词数） |
 
 - `WordBookRegistry`（[types.ts](../src/core/wordbook/types.ts)）：`list()` 返回三类统一的 `BookMeta[]`（用户词书在前，`kind`/`category='user'`/`providerId`/`sync`/`importFormat` 等元数据），`load(id)` 懒加载并缓存 `WordBook { has, size, words(), entry?(word) }`。用户词书由 `createUserWordBook` 包装，`entry` 返回自带的 `UserWord { word, phonetic, trans, ref }`（`ref` 为 provider 删除句柄）。实现 `DefaultWordBookRegistry` 通过 `RegistryLoaders` 注入数据源，`createExtensionLoaders()` 为运行时实现。
 - 用户词书读写：[user-store.ts](../src/core/wordbook/user-store.ts)（`getSourceIndex`/`patchSourceBookState`/`saveSourceBook`、`saveLocalBook`（新建或覆盖导入）/`renameLocalBook`/`deleteLocalBook`（留墓碑））。
 - 打包数据格式：
-  - `data/books/index.json`：`BookCatalog { version: 2, books: CatalogBookMeta[] }`，已按 分类 → 难度 排序；增量书带 `delta { of, minus }`
+  - `data/books/index.json`：`BookCatalog { version: 2, books: CatalogBookMeta[], ladders? }`，已按 分类 → 难度 排序；增量书带 `delta { of, minus }`。`CatalogBookMeta` 可选字段：`ladder`（包含体系组键，level 书为 `cefr`、frequency 书为 `coca`）、`group`（组内单选但非包含体系的组键，计算机三档为 `cs`）、`knownName`（作熟词本时的显示名）、`license`/`url`（数据许可与来源链接，CC 许可的书在词书页展示）、`keywords`（搜索别名，中英都有）。`ladders` 为 `{ cefr: { base: "cefr-a1" }, coca: { base: "coca-top" } }`：base 文件是包含体系最底层（cefr-a1 = A1 段；coca-top = 词频前 3000 的词 ∪ 排名在 3000 之外但低于 B1 的 A1–A2 词，约 3500 词），只用于作熟词本求补集，不进 `books` 列表。因此 coca 档作熟词本剔除的不止“前 N 个常用词”，`knownName` 写作“常用前 3000 词及 A1–A2 词”以免误解
+  - 内容脚本用 [packaged-catalog.ts](../src/core/wordbook/packaged-catalog.ts) 在构建时内联的目录（`PACKAGED_CATALOG`），读到设置即可同步算出熟词本要预取的补集文件，不等目录 fetch
   - `data/books/<id>.json`：`BookDataFile { id, words: string[], extends?: BookId[] }`（小写原形、已排序）。级别/词频书是包含关系，只存比 `extends` 多出的词，`DefaultWordBookRegistry` 加载时递归合并并缓存共享文件
   - 词典两层分片（首字母 `a-z`）：短表 `data/dict/<c>.json` = `{ word: { p 音标, s 行内短释义(单义项、无词性、≤8 字，约 97% 为 2–6 字), v 动词短释义(可选，见下), g 考试标签, l 级别 1–6, r 词频排名 } }`；全表 `data/dict/full/<c>.json` = `{ word: { f 完整释义(每行一个词性), x 词形 "s:widths/p:…" } }`。旧格式（f 在短表）仍兼容
 - `Dictionary`（[dict/types.ts](../src/core/dict/types.ts)）：`DictEntry { word, phonetic, short, shortVerb?, full, tags, level?, rank?, forms? }`。**`lookupMany` 只读短表**（整页行内翻译，不含 full/forms），**`lookup` 额外加载全表**（卡片/详情用）；`CompositeDictionary.lookup` 逐来源调用 `lookup`。辅助：`cefrLabel(level)`、`DICT_FORM_LABELS`。内容脚本使用 `CompositeDictionary([UserBooksDictionary(启用的用户词书), PackagedDictionary])`，用户词书自带释义优先（按启用顺序取第一本有释义的）。
 
-内置词书（`BookCategory` 新增 `level`；`popup` 等按分类穷举的 `Record<BookCategory, …>` 需补该键）：
+内置词书（`BookCategory` 为 `user`/`level`/`exam`/`frequency`/`core`/`domain`/`other`；`popup` 等按分类穷举的 `Record<BookCategory, …>` 新增分类时需补键）：
 
 | 分类 | id | 规则 |
 | --- | --- | --- |
@@ -162,10 +163,16 @@ v2.0.1 旧键 `toggle/ttsToggle/ttsVoices/highlight*/bubble*/dictionaryType/auto
 | `exam` 考试 | `zk gk cet4 cet6 kaoyan tem4 ielts toefl sat tem8 gre` | ECDICT 标签（SAT/专四/专八取 KyleBing 词表），变形词归原形、去专有名词/叹词/缩写，再按书去掉低于考试起点的 CEFR 基础词（高考去 A1，四级去 A1–A2，六级/考研/雅思/托福/专四去 A1–B1，SAT/专八/GRE 去 A1–B2） |
 | `exam` 增量（`delta`） | `gk-new cet4-new cet6-new kaoyan-new ielts-new toefl-new gre-new` | 如六级新增 = 六级 − 中考/高考/四级原始词表 |
 | `frequency` 词频（包含体系） | `coca-3k coca-5k coca-8k coca-12k` | COCA（缺失用 BNC）排名前 N 之外、级别 ≥ B1 的词；“3000 之外”包含后面各档 |
+| `core` 通用核心词 | `ngsl ngsl-spoken` | NGSL 1.2（含补充词）、NGSL-Spoken 1.2，CC BY-SA 4.0 |
+| `domain` 专业领域 | `nawl bsl tsl moel` | 学术科研 NAWL 1.2、商务 BSL 1.20（不拆 band）、职场服务 TSL 1.2（显示名不用考试商标，NOTICE 保留原名）、医学 MOEL 1.0（只收单词条目，复数取原形），均为 CC BY-SA 4.0 |
+| `domain` 计算机（`group: cs`） | `cs-250 cs-500 cs-all` | 计算机科研论文技术词表 TWLRACS（Chen & Lei 2019，CC BY 4.0），按论文语料词频位次切成嵌套的“前 250 / 前 500 / 全部”三档（非官方分级）；人工修复断词、词元化、去专名缩写 |
 
-- 难度分级、词频分级是包含体系，组内单选：启用一档时自动停用同组其他档（`core/wordbook/enable.ts#toggleEnabledBooks`，词书页、首次引导、popup、悬浮球快捷设置共用）；跨组以及与考试词书可以任意组合，命中任一启用词书即高亮（并集）。
+- **组内单选**：`ladder` 相同或 `group` 相同即同组（`enable.ts#singleChoiceKey`），启用一档时自动停用同组其他档（`enable.ts#toggleEnabledBooks`，生词本与熟词本两张表、词书页、首次引导、popup、悬浮球快捷设置共用；调用方不给元数据时用打包目录 `packagedBuiltinMetas()` 判断）；跨组以及与其他词书可以任意组合，命中任一启用词书即高亮（并集）。
+- **组标题全选 / 全不选**（`books.ts#toggleAllBooks`）：难度分级、词频分级不提供全选；其他组全选时逐本启用为生词本（增量书不选，单选组只选词数最多的一档，`selectAllIds`），**跳过当前作熟词本的书**（含熟词角色的来源书），不悄悄把熟词本改成生词本，跳过的书在 toast 中列出；单选组被选中的那一档作熟词本时整组跳过、不改选别的档（cs-250 作熟词本时全选会选 cs-all，cs-all 作熟词本时计算机组整组跳过）。全选框的勾选状态也不计作熟词本的书（`allBooksSelected`）。全不选只把组内的书移出生词本，熟词本用法不动。
+- **新增外部词表**（`build-data.mjs` 7.5–7.7 节）：原始文件由 `fetch-raw.sh` 下载并做 sha256 校验；需要人工清洗的源（论文 PDF、xlsx）把清洗后的词表 [twlracs.tsv](../scripts/data/twlracs.tsv)、[moel.tsv](../scripts/data/moel.tsv) 作为构建输入提交（文件头写来源、许可与修改说明），保证构建确定。外部书的词原内置词典没有、而 ECDICT 有中文释义的（runtime、tuple、parser、lessee、rubella 等约 170 个），向 dict 短/全表分片**只追加**词条；已有词条的所有字段、已有 27 本书与 lemma 产物保持逐字节不变（`tests/fixtures/data-baseline.json` 记录基线 sha256：旧书与 lemma 逐字节比对，dict 分片去掉追加词后比对；构建时 `--keep-dict <旧 data 目录>` 做同样校验）。追加词的短释义若取到非本领域的误导义（convolution 回旋、parser 分析程序），在 short-overrides.tsv 末尾一节覆盖；追加词若是已有词条的屈折形式（hives 之于 hive、shingles 之于 shingle），旧词书高亮该词形时行内释义会先查到追加词条（`engine.ts#translationKeys` 先查页面词形），所以短释义必须包含原形释义（蜂房/荨麻疹、墙面板/带状疱疹），只有逐个审过的纠正例外（outdated、rebound、学科名 macroeconomics 等，见 `build-data.mjs` 的 `ADDED_FORM_GLOSS_REVIEWED`），构建与 data.test 都会校验。外部书不做二次词元化，只显式去掉屈折残留（found/bound 等）。每个原始条目的去向（收录、追加词条、短语、词缀碎片、ECDICT 没有中文释义等）写在审计表 [external-books-audit.tsv](../scripts/data/external-books-audit.tsv)。许可与修改说明见 [NOTICE.txt](../public/data/NOTICE.txt)：派生词书以原许可发布（NGSL 系列 CC BY-SA 4.0，计算机三档 CC BY 4.0）。
+- **搜索**（[search.ts](../src/core/wordbook/search.ts)）：归一化（去空格与连字符、小写）后匹配名称、简称、id、来源、许可、`keywords`、`knownName`、分组名、导入文件名；名称类字段有命中时只列这些，全无命中才退到说明（`filterBooksByQuery`），避免“六级”带出说明里提到六级的其他书。
 
-- **行内短释义的选取**（`build-data.mjs#shortOf`）：跨词性给每个候选义项打分——ECDICT、ECDICT-ultimate（有道简明释义，权重最高）与各 KyleBing 教材词表按“该义项在本词性内的位次”投票，票数按词性常用度（ultimate 词性占比 + CEFR-J 词性）缩放；带专业/语体标注（[医]、(商)、<计>、〔尤指〕、古/俚）的义项、单字义项、超过 6 字的义项降权；同一义项取最自然的写法（动词去“使”“对…/把…”，形容词带“的”，副词去“地”）。有道把计算机义排在首位的（browser：[计] 浏览器）不降权，其他领域标注仍降权。仍不合常用义的词在 [short-overrides.tsv](../scripts/data/short-overrides.tsv) 人工覆盖（约 830 词：现代常用义 submit→提交、legacy→遗产、attribute→属性、volatile→易变的；高频多义词 project→项目；ECDICT 缺现代义的网页/科技词 server→服务器、cache→缓存；数量词 billion→十亿；领域误义 utility→公用事业、projection→预测）。`build-data.mjs --audit <tsv>` 输出可疑选义审计表（单字、四字、不在各来源前 3 义项、带领域标注、未取计算机义），复核后补进覆盖表。金标与格式约束见 `tests/unit/data.test.ts`「行内短释义质量」。
+- **行内短释义的选取**（`build-data.mjs#shortOf`）：跨词性给每个候选义项打分——ECDICT、ECDICT-ultimate（有道简明释义，权重最高）与各 KyleBing 教材词表按“该义项在本词性内的位次”投票，票数按词性常用度（ultimate 词性占比 + CEFR-J 词性）缩放；带专业/语体标注（[医]、(商)、<计>、〔尤指〕、古/俚）的义项、单字义项、超过 6 字的义项降权；同一义项取最自然的写法（动词去“使”“对…/把…”，形容词带“的”，副词去“地”）。有道把计算机义排在首位的（browser：[计] 浏览器）不降权，其他领域标注仍降权。仍不合常用义的词在 [short-overrides.tsv](../scripts/data/short-overrides.tsv) 人工覆盖（约 900 词：现代常用义 submit→提交、legacy→遗产、attribute→属性、volatile→易变的；高频多义词 project→项目；ECDICT 缺现代义的网页/科技词 server→服务器、cache→缓存；数量词 billion→十亿；领域误义 utility→公用事业、projection→预测）。`build-data.mjs --audit <tsv>` 输出可疑选义审计表（单字、四字、不在各来源前 3 义项、带领域标注、未取计算机义），复核后补进覆盖表。金标与格式约束见 `tests/unit/data.test.ts`「行内短释义质量」。
 - **搭配义 `collocationShort(word, prev?, next?)`**（[collocation.ts](../src/core/dict/collocation.ts)，data 第二阶段第 2 轮新增，engine 第二阶段第 2 轮已接入：取 mark 同一父元素内左右紧邻、中间只有空白的单词，按小写与去 -s/-es 两种形式查询）：固定搭配中的短释义（vicious cycle→恶性的、concrete structure→混凝土、storm surge→风暴潮、bulk of→大部分、shed light→揭示）。engine 显示行内译文时传入左右相邻词的小写原形，命中则替换 `short`。
 - **编程熟词** `isCodeKnownWord`（[code-words.ts](../src/core/dict/code-words.ts)）：关键字、内置类型、常见缩写与占位名；标识符子词的 -s/-es/-ed/-ing 屈折形式按原形判断（defaults、modules、callbacks）。
 - **`shortVerb`（短表 `v`，data 第二阶段新增，可选）**：`short` 取的是名词/形容词义项、而该词有动词变形且动词用法不罕见时提供动词释义（advocate：提倡者 / 提倡，约 690 词；超过 6 字或含“…”残缺框式的不提供，规则见 [verb-short.mjs](../scripts/data/verb-short.mjs)，产物中出现不合格的 v 构建直接失败）。ECDICT/有道常把冷僻动词义排在首位（match 使比赛、bolt 筛选、date 过时），在 [verb-overrides.tsv](../scripts/data/verb-overrides.tsv) 人工改为常用义或写 `-` 置空（冷僻义宁可留空，行内回退到 `short`）；short-overrides 覆盖的词默认不给 `v`，需要时同样在该表给出。页面词形是动词变形（advocating、advocated，以 -ing/-ed 结尾且没有自己的词条）时行内翻译改用它（engine 已接入）。`CompositeDictionary` 合并时，前面的来源（用户词书）给了 `short` 就不再混入打包词典的 `shortVerb`。
@@ -188,7 +195,7 @@ interface Lemmatizer {
 
 `candidates` 第一个元素必须是小写原词，之后为候选原形（去重、小写）。全项目通过 `createLemmatizer()` 获取实例（`DataLemmatizer`），调用方需 `await init()` 加载数据，未加载或加载失败时退化为纯规则。
 
-候选顺序：`[小写原词, 去所有格/缩写形式, ...屈折原形, ...派生词根链]`，如 `children's → children's, children, child`、`carelessly → carelessly, careless, care`。匹配取第一个在启用词书中的候选，因此原词在词书中时总是按原词命中；熟词判定看全部候选（标记 care 为熟词后 careless/carelessly 也不再高亮）。
+候选顺序：`[小写原词, 去所有格/缩写形式, ...屈折原形, ...派生词根链]`，如 `children's → children's, children, child`、`carelessly → carelessly, careless, care`。匹配取第一个在启用词书中的候选，因此原词在词书中时总是按原词命中；熟词判定在本地熟词本、来源熟词本与本地词书熟词本中看全部候选（标记 care 为熟词后 careless/carelessly 也不再高亮），内置词书作熟词本时只看原词与屈折原形（见 4.4）。
 
 “规则 + 覆盖表”结构：
 
@@ -209,8 +216,11 @@ flowchart LR
 
 `WordMatcher#match(surface)` → `MatchResult { surface, lemma, bookIds } | null`：
 
-1. 任一候选在熟词本中 → 不匹配（熟词优先）
-2. 按候选顺序取第一个出现在任一启用词书中的候选作为 `lemma`
+1. 熟词优先，按熟词本类别分两种口径（`WordMatcherOptions` 的 `known` / `knownBuiltin`，来源与裁决见 [4.9](#49-熟词本加入生词本与移除目标)）：
+   - `known`（本地熟词本、来源熟词本、本地词书熟词本）：任一候选（含派生词根）在熟词本中 → 不匹配。熟词本条目若是变形写法（criteria），其屈折原形也算熟词；
+   - `knownBuiltin`（内置词书作熟词本）：只看原词、去所有格形式与屈折原形，**不看派生词根**（`WordMatcher#knownBuiltinHas`），所以熟词本有 central、envy 时 centralize、envious 仍按生词判断；页面词本身是启用内置生词本的独立词条（electronics、goods、misleading）时不按屈折剔除；
+   - 另外，第 2 步选 lemma 时若按候选顺序先走到内置熟词（abusive 本身与屈折候选都不在生词本，候选链往下先遇到熟词 abuse，说明要退到熟词或更远的词根才能命中生词本），或用户词书变形条目归一后的原形是内置熟词，同样不匹配；原词或更近的候选先命中生词本时（careless 在生词本、care 是熟词）照常高亮。
+2. 按候选顺序取第一个出现在任一启用词书中的候选作为 `lemma`（只命中用户词书变形条目 studies 时归一到屈折原形 study）
 3. `bookIds` 为包含该 lemma 的启用词书（按优先级），首个决定样式
 
 `findWordFormsOfLemma(lemma, words, lemmatizer)`（[forms.ts](../src/core/match/forms.ts)）复用 WordMatcher 判定“高亮意义上同原形”的词形，**含派生词**（runner→run），只用于展示/统计。删除、移除一律用 background 的 `findInflectedForms`（[background/forms.ts](../src/background/forms.ts)），只认屈折变化，见 4.9。
@@ -402,8 +412,14 @@ flowchart LR
 
 熟词本与生词本使用同一套“来源 + 多本”模型（[known/sources.ts](../src/core/known/sources.ts)）：
 
-- 本地熟词本（storage `knownWords`，参与 storage.sync）始终生效；来源熟词本 = 生效角色为 known 的来源词书（provider 声明或 `knownBooks.roles` 覆盖），在 `knownBooks.enabled` 中启用后生效。
-- `getKnownWords()` 返回两者的并集，内容脚本的 WordMatcher 用它判定熟词（熟词优先于生词）。只编辑本地熟词本的地方（options 熟词管理、storage.sync）用 `getKnownData`。
+- 本地熟词本（storage `knownWords`，参与 storage.sync）始终生效。其余熟词本放在 `knownBooks.enabled`，可以是任意词书，是否生效由 `sources.ts#isEffectiveKnownBook` 裁决：
+  - 来源词书：生效角色为 known（provider 声明或 `knownBooks.roles` 覆盖）；来源书在生词/熟词之间切换统一走 `setSourceBookRole`；
+  - 本地导入书：“我的生词本”（`local:mine`）不能作熟词本（卡片加词写入它并会自动放回生词本）；本地书设为熟词本时从 `wordActions.addTargets`/`knownRemoveFrom` 移除，`sources.ts#effectiveAddTargets` 兜底排除同步过来的旧设置，卡片加词目标与 background 写入都不含熟词本中的本地书（加入后也不会高亮，只选了这类书时提示改选）；
+  - 内置书：非 ladder 书作熟词本就是书本身；ladder 书（cefr/coca）作熟词本 = “低于本档”的补集（ladder base 文件 ∪ 同 ladder 更低各档自身词，`registry.loadAsKnown`），如 B2 作熟词本 = A1–B1，最低档 A2 作熟词本 = A1，显示名取 `knownName`；计算机三档（`group: cs`）作熟词本就是该“前 N”集合本身。
+- **生词本与熟词本互斥**：非 ladder 书只能在一张表（选项页 `books.ts#setBookUsage` 保证，读取时 `books.enabled` 优先，避免“启用了却什么都不标”）；ladder 书同一档可同时作生词本与熟词本（“本档及以上”与“低于本档”不相交），两张表各自组内单选；group 书（计算机三档）与普通书一样只排除同一本，两张表各自组内单选、可以各选一档（`enable.ts#crossTableExclusiveIds`），如生词本 cs-all + 熟词本 cs-250 = 全部减去前 250，生词档不大于熟词档（生词 cs-250 + 熟词 cs-500）时生词本被整本覆盖、什么都不标，属于用户自选组合，不拦截。popup 与悬浮球只做生词开关，过滤“仅作熟词本”的书，group 书只过滤真正作熟词本的那一档、同组其他档照常可选（`isKnownOnlyBook`、popup `model.ts#newBookChoices`/`setNewBookEnabled`）；popup 的“本地熟词”标签只列本地熟词本，另有生效熟词本时在列表下注明“另有 N 本词书作熟词本”（`sources.ts#enabledKnownBookIds`）。
+- **两种判定口径**（`store.ts#getKnownWordSets` → `KnownWordSets { words, builtin }` → WordMatcher 的 `known`/`knownBuiltin`）：本地熟词本、来源熟词本、本地词书熟词本保持宽口径（页面词的任一候选含派生词根命中即熟词）；**内置词书熟词本只按原词与屈折原形判断**（`Lemmatizer#analyze().base + inflections`，不含派生词根，`WordMatcher#knownBuiltinHas`），避免大词表误伤派生词（熟词=中考∪高考时，六级有 138 个词只因派生词根命中会被剔除，如 centralize、envious）。页面词本身是启用内置生词本的独立词条（electronics、goods、misleading）时不按屈折剔除；选 lemma 时先走到内置熟词（abusive → abuse）、或用户词书变形条目归一后的原形是内置熟词时同样不高亮（匹配规则全文见 [4.4](#44-匹配服务wordmatcher)）。
+- `getKnownWords()`/`isKnownWord()` 语义保持“全部生效熟词的并集”，background 判断“仍在启用的熟词本中”等提示用；只编辑本地熟词本的地方（options 熟词管理、storage.sync）用 `getKnownData`。
+- **内容脚本**：熟词本中的内置书进首屏预取（ladder 书取补集文件，`registry.ts#knownBookFileIds`），与生词本文件同时发出；`knownBooks` 变化、熟词本数据键（`srcBook:*`/`localBook:*`）变化都会重建 matcher。
 
 单词操作在 [background/known.ts](../src/background/known.ts)，目标配置为 `settings.wordActions`。目标 id 可以是本地词书 `local:…`、来源词书 `src:…`，或本地熟词本 `known:local`。不支持的目标（如欧路“已掌握”只读、有道非默认分组不能加词）会跳过，结果中带 `skipped` 和原因。
 
@@ -429,7 +445,7 @@ sequenceDiagram
 
 **选中文本右键菜单**（[background/context-menu.ts](../src/background/context-menu.ts)，第二阶段新增，manifest 权限 `contextMenus`，无安装警告）：桌面浏览器选中单词后右键“加入生词本：“…””/“标记为熟词：“…””，与卡片按钮走同一个 `addWord`/`markKnown`（目标按 `wordActions`），原形取屈折还原（running→run，不取派生词根）；选中的不是单个英文单词时提示“请只选中一个英文单词”，含非英文字母的拉丁词（café、fiancé）不截断、直接拒绝并提示；`markKnown` 不带 `confirmed`，同形异义词形的远端删除保留并在 message 说明。结果通过 `actionNotice` 发给内容脚本，同时徽章闪 ✓/!。没有 `contextMenus` API 的浏览器（Edge/Chrome Android）不注册，菜单与徽章初始化失败都不影响 SW 其余初始化（有单测覆盖 `contextMenus=undefined`）。
 
-熟词本存储见 [known/store.ts](../src/core/known/store.ts)：`getKnownData`（本地熟词本）、`getKnownWords`（生效并集）、`setKnownWords`、`replaceKnownWords`（文本编辑，删除的记墓碑）、`importKnownWords`、`exportKnownWords('txt'|'csv')`。合并规则见 `mergeKnownWords`。
+熟词本存储见 [known/store.ts](../src/core/known/store.ts)：`getKnownData`（本地熟词本）、`getKnownWordSets`（按口径分两个集合）、`getKnownWords`（生效并集）、`setKnownWords`、`replaceKnownWords`（文本编辑，删除的记墓碑）、`importKnownWords`、`exportKnownWords('txt'|'csv')`。合并规则见 `mergeKnownWords`。
 
 ### 4.10 手动导入
 
@@ -511,7 +527,7 @@ flowchart LR
 
 - **`SiteContext`**（[sites/types.ts](../src/content/sites/types.ts)）：适配层与悬浮球访问 app 状态的唯一接口——设置、是否生效、卡片、`openCard(anchor)`（锚点可以是带 `data-lemma`/`data-books` 的任意元素，包括 Shadow DOM 内的元素）、`lookupMany`、`createMatcher`（与 engine 同口径的生词判断）、`lemmaCandidates`、`pageLemmas`、`markKnown`/`unmarkKnown`（与卡片“认识”同一流程）、`onSettingsChange`。
 - **浮层宿主**（[floatball/host.ts](../src/content/floatball/host.ts)）：自定义标签 + open Shadow DOM，z-index 2147483646（比卡片低 1，卡片总在面板之上）；宿主内事件不冒泡到页面；全屏时 `followFullscreen` 把悬浮球、站点面板和 `hnw-card-host` 一起迁入全屏元素（桌面 YouTube 全屏元素是 `<html>` 不用迁，m.youtube.com 是 `#movie_player`）。
-- **悬浮球**：只在 `(hover: none) and (pointer: coarse)` 时显示（不看 UA，PC 不显示），可拖动、吸附左右边缘（拖离边缘时可拖动取词，见下），3 秒无操作或滚动时缩成边缘外露出约 20px 的强调色小标签（白色内描边 + 深色外阴影，深浅背景上都看得见），上下避开状态栏与手势条。菜单里“在本站隐藏 / 全部关闭”后 toast 带“撤销”，宿主保留到 toast 结束；恢复入口在选项页“更多 › 悬浮球”。点按：取词模式中 → 退出；站点有 primary 功能项（YouTube 视频页“当前字幕”）→ 直接执行；否则打开底部抽屉菜单：取词模式、本站高亮开关、本页生词（点开卡片 / 认识）、快捷设置（行内释义、高亮样式预设、词书多选、YouTube 字幕译文、隐藏悬浮球）、同步状态（点按立即同步全部；有未登录等问题时去选项页对应位置；文案中性，只写“有道待设置”之类，不常驻原始报错，见 `model.ts#syncFootText`）、完整设置。功能块与标签栏固定，只有标签页内容滚动。设置直接写 storage 中的 settings（与 popup 同一份数据），预设切换复用 options 的 `applyPreset`，站点/词书切换复用 popup `model.ts`。
+- **悬浮球**：只在 `(hover: none) and (pointer: coarse)` 时显示（不看 UA，PC 不显示），可拖动、吸附左右边缘（拖离边缘时可拖动取词，见下），3 秒无操作或滚动时缩成边缘外露出约 20px 的强调色小标签（白色内描边 + 深色外阴影，深浅背景上都看得见），上下避开状态栏与手势条。菜单里“在本站隐藏 / 全部关闭”后 toast 带“撤销”，宿主保留到 toast 结束；恢复入口在选项页“更多 › 悬浮球”。点按：取词模式中 → 退出；站点有 primary 功能项（YouTube 视频页“当前字幕”）→ 直接执行；否则打开底部抽屉菜单：取词模式、本站高亮开关、本页生词（点开卡片 / 认识）、快捷设置（行内释义、高亮样式预设、词书生词开关、YouTube 字幕译文、隐藏悬浮球；词书 chip 只做生词开关，先过滤“仅作熟词本”的书，只列已启用的书（按启用顺序在前）和难度分级/考试/词频分级三组中未启用的内置书，同 ladder/group 组内单选并维护与熟词本的互斥，其余书（通用核心词、专业领域、未启用的用户词书）由末尾“全部词书…”打开选项页 `#books`，见 `model.ts#quickBookChips`）、同步状态（点按立即同步全部；有未登录等问题时去选项页对应位置；文案中性，只写“有道待设置”之类，不常驻原始报错，见 `model.ts#syncFootText`）、完整设置。功能块与标签栏固定，只有标签页内容滚动。设置直接写 storage 中的 settings（与 popup 同一份数据），预设切换复用 options 的 `applyPreset`，站点/词书切换复用 popup `model.ts`（词书开关为 `setNewBookEnabled`）。
 - **长按选词查词**（悬浮球显示时常开）：手机长按单词时浏览器选中该词，选区恰好是一个英文单词且来自最近的触摸时直接打开卡片（`PickMode#enableLongPress`），不清除选区、不影响系统复制菜单；选区拖大成短语时收起卡片。
 - **拖动取词**：拖动悬浮球（超过 6px 才算拖动，否则仍是点按）时，球心离左右屏幕边缘超过 56px 就在球心正上方 60px 处显示准星（避开手指），每帧（rAF）最多取词一次，准星下的单词显示预览框（与卡片锚点的取词框分开）。松手时准星下有单词 → 打开该词卡片（高亮词以 `hnw-mark` 为锚点，其他词与取词模式同样放取词框），球回到拖动前的位置、不改记忆位置；准星下没有单词或球在贴边区 → 照常移到松手处吸边并记忆；`pointercancel` 不取词。准星位置与贴边区判定见 `model.ts#dragAimPoint`，命中测试复用 `PickMode#probeAt`。
 - **取词模式**：document 捕获阶段的 click + `caretPositionFromPoint`/`caretRangeFromPoint` 取点按位置的单词（必须真的落在单词框内），在悬浮球 Shadow DOM 中放一个与单词同位置的取词框作为卡片锚点，不改页面 DOM；高亮词交给通用卡片触发；取词模式中点按一律不跳链接，可编辑区除外。
