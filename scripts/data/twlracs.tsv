@@ -1,0 +1,794 @@
+# TWLRACS 计算机科研技术词表（清洗后的构建输入，供 build-data.mjs 生成 cs-250 / cs-500 / cs-all）
+# 来源：Chen, L. & Lei, L. (2019). A Technical Word List for Research Articles in Computer Science. English Language Teaching, 12(10), 131-.
+#   DOI 10.5539/elt.v12n10p131，https://ccsenet.org/journal/index.php/elt/article/view/0/40859
+#   PDF https://ccsenet.org/journal/index.php/elt/article/download/0/0/40859/42182（Appendix A，769 technical words）
+#   PDF sha256 10ada362e09398ff40b9c9758654e86ef673dfa7ab17bb389aa77f8c877ff42c
+# 许可：CC BY 4.0 https://creativecommons.org/licenses/by/4.0/
+# 修改说明（本文件相对论文附录的改动）：
+#   - pdftotext 抽取 Appendix A，按出现顺序编号：第 1 列 = 附录中的位次 1..769，每个位次恰好一行（论文自身编号有跳号/重号，不采用）
+#   - 第 2 列为最终词元（原形没有中文释义时的回退见下文），build-data.mjs 不再二次词元化；同一词元出现多次时只有首次位次计入词书（其余行审计记为 dup）
+#   - 第 2 列为 - 的行不收，第 4 列写原因：
+#       断词残片（论文排版断词产生：mation ward tively lated formance straints sponding mentation tering rithm lowing ordial gorithm tributed ba）
+#       缩写（http html app dag gps pos cpu(s) gpu(s) vms gui nat）
+#       专名/冠名词（google intel linux android matlab haskell oracle markov fourier gaussian boolean bayes/bayesian turing hamming
+#                   laplacian lagrangian euclidean cartesian poisson taylor fisher hilbert kolmogorov voronoi pareto petri monte carlo 等）
+#   - 修复截断词：nonunifor→nonuniform、disconnecte→disconnect、bitma→bitmap
+#   - 转小写，屈折形式（复数、-ing、-ed）统一还原为词典原形：vertices→vertex、subgraphs→subgraph、
+#     clustering→cluster、hashing→hash、caching→cache、slicing/slices→slice、logging→log、encoding(s)→encode、ordering(s)→order、
+#     sensing→sense、weighting→weight、forwarding→forward、messaging→message、boosting→boost、multiplexing→multiplex、
+#     squared→square、dotted→dot、dashed→dash、saturated→saturate、rewritten/rewriting→rewrite 等；
+#     页面上的 logging、encoding 等词形由词形还原命中原形。只有原词形本身是内置词典独立词条时保留原形
+#     （semantics 语义学、infected、incoming、pending、rating 等）；outgoing、unlabeled、nonblocking 不是屈折形式，保留
+#     第 2 列的原形没有中文释义、原词形本身有时，build-data.mjs 构建时退回原词形（precomputed：precompute 在 ECDICT 只有 [网络] 释义）
+#   - 修正 ECDICT 词元化误判：outlier 保持原形（非 outly）、physics、aliasing→alias、caches→cache
+#   - 原内置词典没有的专业词（runtime、tuple 等）构建时从 ECDICT 追加词典条目后收入，在 scripts/data/external-books-audit.tsv 中记为 added；ECDICT 没有中文释义（不存在或只有 [网络] 释义）的才不收（nodict）
+# 列：位次<TAB>词元（- 表示不收）<TAB>附录原词形（小写，截断词已修复）<TAB>不收原因
+1	type	type
+2	algorithm	algorithm
+3	node	node
+4	query	query
+5	theorem	theorem
+6	database	database
+7	semantics	semantics
+8	kernel	kernel
+9	proposition	proposition
+10	server	server
+11	binary	binary
+12	tuple	tuple
+13	interface	interface
+14	threshold	threshold
+15	vertex	vertices
+16	bandwidth	bandwidth
+17	recall	recall
+18	cluster	cluster
+19	subset	subset
+20	vertex	vertex
+21	buffer	buffer
+22	storage	storage
+23	topology	topology
+24	software	software
+25	segmentation	segmentation
+26	hardware	hardware
+27	polynomial	polynomial
+28	loop	loop
+29	runtime	runtime
+30	stack	stack
+31	feedback	feedback
+32	wireless	wireless
+33	semantic	semantic
+34	queue	queue
+35	integer	integer
+36	-	boolean	专名/冠名词
+37	segment	segment
+38	sensor	sensor
+39	sparse	sparse
+40	grid	grid
+41	atomic	atomic
+42	-	gaussian	专名/冠名词
+43	notation	notation
+44	workload	workload
+45	segment	segments
+46	architecture	architecture
+47	session	session
+48	internet	internet
+49	disk	disk
+50	recursive	recursive
+51	verify	verify
+52	correlation	correlation
+53	dataset	datasets
+54	descriptor	descriptor
+55	matrix	matrices
+56	digital	digital
+57	filter	filter
+58	disjoint	disjoint
+59	pairwise	pairwise
+60	compute	computes
+61	module	module
+62	concrete	concrete
+63	setup	setup
+64	benchmark	benchmark
+65	implementation	implementations
+66	-	http	缩写
+67	algebra	algebra
+68	counter	counter
+69	rewrite	rewrite
+70	dual	dual
+71	execute	execute
+72	default	default
+73	rotation	rotation
+74	-	euclidean	专名/冠名词
+75	port	port
+76	prototype	prototype
+77	tag	tag
+78	nonlinear	nonlinear
+79	vertical	vertical
+80	lookup	lookup
+81	triangle	triangle
+82	magnitude	magnitude
+83	trivial	trivial
+84	horizontal	horizontal
+85	layout	layout
+86	scan	scan
+87	incoming	incoming
+88	optimize	optimize
+89	reuse	reuse
+90	subgraph	subgraph
+91	dense	dense
+92	orthogonal	orthogonal
+93	compact	compact
+94	technology	technologies
+95	asynchronous	asynchronous
+96	cardinality	cardinality
+97	entropy	entropy
+98	keyword	keyword
+99	permutation	permutation
+100	index	indices
+101	-	intel	专名/冠名词
+102	correlate	correlated
+103	histogram	histograms
+104	quadratic	quadratic
+105	penalty	penalty
+106	solver	solver
+107	tile	tile
+108	granularity	granularity
+109	scalable	scalable
+110	compress	compressed
+111	preprocess	preprocessing
+112	outgoing	outgoing
+113	bin	bin
+114	gray	gray
+115	-	google	专名/冠名词
+116	mathematical	mathematical
+117	homogeneous	homogeneous
+118	arithmetic	arithmetic
+119	architecture	architectures
+120	sketch	sketch
+121	triple	triples
+122	mask	mask
+123	naive	naive
+124	median	median
+125	snapshot	snapshot
+126	slice	slicing
+127	instantiation	instantiation
+128	dash	dashed
+129	optimum	optimum
+130	nonzero	nonzero
+131	batch	batch
+132	quantify	quantify
+133	outperform	outperform
+134	priori	priori
+135	correlation	correlations
+136	routine	routine
+137	residual	residual
+138	retrieve	retrieve
+139	dedicate	dedicated
+140	endpoint	endpoint
+141	duplicate	duplicate
+142	logarithmic	logarithmic
+143	skip	skip
+144	competitive	competitive
+145	semantically	semantically
+146	anonymous	anonymous
+147	exit	exit
+148	desktop	desktop
+149	prune	prune
+150	tractable	tractable
+151	rectangle	rectangle
+152	-	html	缩写
+153	traverse	traverse
+154	alpha	alpha
+155	subsection	subsection
+156	parse	parse
+157	-	mation	断词残片
+158	subtle	subtle
+159	suite	suite
+160	intersect	intersect
+161	asymptotically	asymptotically
+162	cope	cope
+163	laboratory	laboratory
+164	pop	pop
+165	feed	feed
+166	suboptimal	suboptimal
+167	drawback	drawback
+168	-	app	缩写
+169	discard	discard
+170	super	super
+171	diameter	diameter
+172	compromise	compromise
+173	decompose	decompose
+174	anomaly	anomalies
+175	reset	reset
+176	nonuniform	nonuniform
+177	-	cartesian	专名/冠名词
+178	-	ward	断词残片
+179	rightmost	rightmost
+180	download	download
+181	revisit	revisit
+182	accomplish	accomplish
+183	dot	dotted
+184	multiplicative	multiplicative
+185	impractical	impractical
+186	alarm	alarm
+187	discrepancy	discrepancy
+188	disconnect	disconnected
+189	diagnosis	diagnosis
+190	mismatch	mismatch
+191	deploy	deploy
+192	sibling	siblings
+193	depict	depict
+194	drastically	drastically
+195	indistinguishable	indistinguishable
+196	mirror	mirror
+197	nonlinearity	nonlinearity
+198	interleave	interleaved
+199	laptop	laptop
+200	ensemble	ensemble
+201	tedious	tedious
+202	denominator	denominator
+203	ubiquitous	ubiquitous
+204	lemma	lemma
+205	video	video
+206	throughput	throughput
+207	cache	cache
+208	schema	schema
+209	cluster	clustering
+210	pixel	pixel
+211	dataset	dataset
+212	hash	hash
+213	mesh	mesh
+214	descriptor	descriptors
+215	server	servers
+216	deterministic	deterministic
+217	usability	usability
+218	rewrite	rewriting
+219	baseline	baseline
+220	canonical	canonical
+221	syntax	syntax
+222	convex	convex
+223	-	linux	专名/冠名词
+224	synthetic	synthetic
+225	confidentiality	confidentiality
+226	pedestrian	pedestrians
+227	token	token
+228	filter	filtering
+229	compiler	compiler
+230	patch	patches
+231	-	oracle	专名/冠名词
+232	histogram	histogram
+233	byte	bytes
+234	pipeline	pipeline
+235	kernel	kernels
+236	chunk	chunk
+237	-	markov	专名/冠名词
+238	modal	modal
+239	-	mac	专名/冠名词
+240	filter	filters
+241	sensor	sensors
+242	span	spanning
+243	remote	remote
+244	recursion	recursion
+245	slice	slice
+246	posterior	posterior
+247	stochastic	stochastic
+248	collision	collision
+249	acyclic	acyclic
+250	outlier	outliers
+251	theorem	theorems
+252	nominal	nominal
+253	relay	relay
+254	notation	notations
+255	nontrivial	nontrivial
+256	optimize	optimizing
+257	execution	executions
+258	contraction	contraction
+259	lattice	lattice
+260	bin	bins
+261	topological	topological
+262	-	bayesian	专名/冠名词
+263	circuit	circuit
+264	sibling	sibling
+265	invariant	invariants
+266	algebraic	algebraic
+267	triple	triple
+268	scalar	scalar
+269	placement	placement
+270	pending	pending
+271	monotonic	monotonic
+272	trivially	trivially
+273	platform	platforms
+274	rewrite	rewritten
+275	square	squared
+276	composition	compositions
+277	corpus	corpus
+278	architectural	architectural
+279	asymptotic	asymptotic
+280	unlabeled	unlabeled
+281	insertion	insertions
+282	subsequence	subsequence
+283	parameterization	parameterization
+284	tile	tiles
+285	predecessor	predecessor
+286	substring	substrings
+287	admissible	admissible
+288	saturation	saturation
+289	modular	modular
+290	sketch	sketches
+291	delta	delta
+292	collision	collisions
+293	undirected	undirected
+294	metadata	metadata
+295	drift	drift
+296	leverage	leverage
+297	interior	interior
+298	monotonically	monotonically
+299	rectangular	rectangular
+300	cluster	clustered
+301	dummy	dummy
+302	-	dag	缩写
+303	outlier	outlier
+304	multivariate	multivariate
+305	-	tively	断词残片
+306	pseudocode	pseudocode
+307	slice	slices
+308	subgraph	subgraphs
+309	bidirectional	bidirectional
+310	factorization	factorization
+311	tag	tagging
+312	install	installed
+313	serial	serial
+314	triangular	triangular
+315	hint	hints
+316	amortize	amortized
+317	traverse	traversing
+318	scan	scanned
+319	pipeline	pipelines
+320	predictive	predictive
+321	swap	swap
+322	macro	macro
+323	saturate	saturated
+324	quad	quad
+325	instantiate	instantiate
+326	exponent	exponent
+327	calibrate	calibrated
+328	parallelization	parallelization
+329	stack	stacked
+330	outperform	outperformed
+331	download	downloaded
+332	multilevel	multilevel
+333	overload	overload
+334	order	orderings
+335	abstract	abstracted
+336	subclass	subclasses
+337	blank	blank
+338	opaque	opaque
+339	solver	solvers
+340	prone	prone
+341	departure	departure
+342	-	gps	缩写
+343	mitigate	mitigate
+344	superset	superset
+345	legacy	legacy
+346	-	lated	断词残片
+347	physics	physics
+348	skew	skew
+349	recall	recalling
+350	ancestor	ancestors
+351	prototype	prototypes
+352	alleviate	alleviate
+353	tuple	tuples
+354	pixel	pixels
+355	latency	latency
+356	automaton	automata
+357	patch	patch
+358	blur	blur
+359	alphabet	alphabet
+360	slot	slots
+361	subspace	subspace
+362	unary	unary
+363	speedup	speedup
+364	reachable	reachable
+365	configuration	configurations
+366	dimensionality	dimensionality
+367	radius	radius
+368	syntactic	syntactic
+369	covariance	covariance
+370	coefficient	coefficients
+371	buffer	buffers
+372	lemma	lemmas
+373	inductive	inductive
+374	ambient	ambient
+375	spectral	spectral
+376	coefficient	coefficient
+377	byte	byte
+378	offline	offline
+379	isomorphic	isomorphic
+380	overlay	overlay
+381	planar	planar
+382	audio	audio
+383	bitmap	bitmap
+384	proposition	propositions
+385	queue	queues
+386	sense	sensing
+387	parametric	parametric
+388	hash	hashing
+389	monotone	monotone
+390	animation	animation
+391	injection	injection
+392	ancestor	ancestor
+393	triangle	triangles
+394	modality	modalities
+395	topology	topologies
+396	reorder	reordering
+397	snippet	snippet
+398	executable	executable
+399	-	pos	缩写
+400	modulo	modulo
+401	substring	substring
+402	hull	hull
+403	weight	weighting
+404	probe	probes
+405	optimizer	optimizer
+406	alias	aliasing
+407	debug	debugging
+408	dispatch	dispatch
+409	piecewise	piecewise
+410	commutative	commutative
+411	convolution	convolution
+412	disk	disks
+413	bug	bugs
+414	inequality	inequalities
+415	footprint	footprint
+416	transient	transient
+417	subclass	subclass
+418	browse	browsing
+419	encode	encodings
+420	suppression	suppression
+421	compromise	compromised
+422	provable	provable
+423	parser	parser
+424	segment	segmented
+425	continuation	continuation
+426	perturbation	perturbation
+427	slowdown	slowdown
+428	heterogeneity	heterogeneity
+429	harmonic	harmonic
+430	-	formance	断词残片
+431	void	void
+432	adversarial	adversarial
+433	inject	injected
+434	compaction	compaction
+435	-	cpus	缩写
+436	aggressive	aggressive
+437	layout	layouts
+438	skeleton	skeleton
+439	prop	prop
+440	surveillance	surveillance
+441	precompute	precomputed
+442	transitivity	transitivity
+443	attacker	attackers
+444	density	densities
+445	filter	filtered
+446	-	horn	专名/冠名词
+447	-	fourier	专名/冠名词
+448	clip	clip
+449	maximum	maxima
+450	-	taylor	专名/冠名词
+451	-	straints	断词残片
+452	stack	stacks
+453	stack	stacks
+454	intensity	intensities
+455	assert	assert
+456	comprehension	comprehension
+457	absorption	absorption
+458	mask	masks
+459	-	sponding	断词残片
+460	anomalous	anomalous
+461	benign	benign
+462	mask	masking
+463	fuzzy	fuzzy
+464	snapshot	snapshots
+465	subsume	subsumed
+466	-	mentation	断词残片
+467	subproblem	subproblem
+468	foreach	foreach
+469	provably	provably
+470	packet	packet
+471	packet	packets
+472	client	clients
+473	optical	optical
+474	workload	workloads
+475	slot	slot
+476	classifier	classifier
+477	texture	texture
+478	gradient	gradient
+479	subtree	subtree
+480	forward	forwarding
+481	-	gpu	缩写
+482	video	videos
+483	reachability	reachability
+484	classifier	classifiers
+485	foreground	foreground
+486	adversary	adversary
+487	contention	contention
+488	peer	peers
+489	backup	backup
+490	token	tokens
+491	encryption	encryption
+492	probe	probing
+493	attacker	attacker
+494	quantum	quantum
+495	nonempty	nonempty
+496	deployment	deployment
+497	calibration	calibration
+498	transitive	transitive
+499	mobility	mobility
+500	velocity	velocity
+501	port	ports
+502	overhead	overheads
+503	replica	replicas
+504	password	password
+505	eigenvalue	eigenvalues
+506	counter	counters
+507	subtree	subtrees
+508	modality	modality
+509	nondeterministic	nondeterministic
+510	cache	caches
+511	smoothness	smoothness
+512	receiver	receivers
+513	bitmap	bitma
+514	oblivious	oblivious
+515	handler	handler
+516	replica	replica
+517	encrypt	encrypted
+518	cache	caching
+519	-	gpus	缩写
+520	circuit	circuits
+521	-	tering	断词残片
+522	literal	literals
+523	-	poisson	专名/冠名词
+524	multicore	multicore
+525	multiset	multiset
+526	predefine	predefined
+527	-	hamming	专名/冠名词
+528	injective	injective
+529	subspace	subspaces
+530	compositional	compositional
+531	disjunction	disjunction
+532	synchronous	synchronous
+533	liveness	liveness
+534	subsystem	subsystem
+535	cosine	cosine
+536	keyboard	keyboard
+537	robot	robot
+538	projector	projector
+539	timeout	timeout
+540	photo	photos
+541	analyzer	analyzer
+542	threshold	thresholding
+543	clip	clips
+544	constructor	constructor
+545	boost	boosting
+546	manuscript	manuscript
+547	literal	literal
+548	lookup	lookups
+549	multithread	multithreaded
+550	dissimilarity	dissimilarity
+551	pyramid	pyramid
+552	cellular	cellular
+553	-	bayes	专名/冠名词
+554	centroid	centroid
+555	snippet	snippets
+556	-	pascal	专名/冠名词
+557	selectivity	selectivity
+558	garbage	garbage
+559	click	click
+560	multiplex	multiplexing
+561	-	fisher	专名/冠名词
+562	bipartite	bipartite
+563	-	rithm	断词残片
+564	anchor	anchor
+565	-	carlo	专名/冠名词
+566	operand	operands
+567	bug	bug
+568	-	monte	专名/冠名词
+569	cache	cached
+570	-	hilbert	专名/冠名词
+571	amplitude	amplitude
+572	zoom	zoom
+573	rotation	rotations
+574	buffer	buffered
+575	obligation	obligations
+576	ternary	ternary
+577	polygon	polygon
+578	syntactically	syntactically
+579	fetch	fetch
+580	robot	robots
+581	-	inria	专名/冠名词
+582	timestamp	timestamps
+583	webpage	webpage
+584	categorical	categorical
+585	-	lowing	断词残片
+586	opponent	opponent
+587	subdivision	subdivision
+588	commute	commute
+589	duration	durations
+590	-	matlab	专名/冠名词
+591	rewrite	rewrites
+592	downstream	downstream
+593	premise	premises
+594	healthcare	healthcare
+595	realism	realism
+596	compliance	compliance
+597	speedup	speedups
+598	minimum	minima
+599	rotate	rotated
+600	-	stanford	专名/冠名词
+601	halt	halts
+602	cube	cube
+603	precomputation	precomputation
+604	lossy	lossy
+605	overload	overloaded
+606	pointwise	pointwise
+607	translator	translator
+608	hash	hashes
+609	stateful	stateful
+610	repeatability	repeatability
+611	binomial	binomial
+612	counterexample	counterexample
+613	-	ordial	断词残片
+614	biology	biology
+615	efficacy	efficacy
+616	-	kolmogorov	专名/冠名词
+617	logistic	logistic
+618	digit	digits
+619	magnitude	magnitudes
+620	invertible	invertible
+621	portable	portable
+622	socket	socket
+623	automaton	automaton
+624	soundness	soundness
+625	peer	peer
+626	multicast	multicast
+627	congestion	congestion
+628	provenance	provenance
+629	hop	hop
+630	regularization	regularization
+631	conjunctive	conjunctive
+632	finitely	finitely
+633	discriminative	discriminative
+634	authorization	authorization
+635	curvature	curvature
+636	existential	existential
+637	-	gui	缩写
+638	workflow	workflow
+639	gradient	gradients
+640	rating	ratings
+641	clique	clique
+642	tracker	trackers
+643	lens	lens
+644	profile	profiles
+645	affine	affine
+646	schema	schemas
+647	controller	controllers
+648	wavelength	wavelength
+649	unsupervised	unsupervised
+650	angular	angular
+651	-	turing	专名/冠名词
+652	cryptographic	cryptographic
+653	log	logging
+654	eigenvector	eigenvectors
+655	aesthetic	aesthetic
+656	destination	destinations
+657	rename	renaming
+658	-	laplacian	专名/冠名词
+659	eigenvalue	eigenvalue
+660	sparsity	sparsity
+661	nonblocking	nonblocking
+662	inductively	inductively
+663	operand	operand
+664	infected	infected
+665	isomorphism	isomorphism
+666	unfold	unfolding
+667	-	ba	断词残片
+668	authorize	authorized
+669	dilation	dilation
+670	concave	concave
+671	-	petri	专名/冠名词
+672	quantization	quantization
+673	ghost	ghost
+674	ontology	ontology
+675	impair	impaired
+676	upload	upload
+677	derivable	derivable
+678	projective	projective
+679	misalignment	misalignment
+680	buffer	buffering
+681	discretization	discretization
+682	segmentation	segmentations
+683	deadlock	deadlock
+684	-	android	专名/冠名词
+685	caller	caller
+686	infinity	infinity
+687	-	gorithm	断词残片
+688	alignment	alignments
+689	nondeterminism	nondeterminism
+690	-	nat	缩写
+691	warp	warps
+692	-	voronoi	专名/冠名词
+693	login	login
+694	polygon	polygons
+695	multiset	multisets
+696	codeword	codewords
+697	pie	pie
+698	fake	fake
+699	certificate	certificate
+700	browser	browser
+701	carrier	carrier
+702	chord	chord
+703	landmark	landmarks
+704	radial	radial
+705	inject	inject
+706	slack	slack
+707	lexical	lexical
+708	timeline	timeline
+709	tutorial	tutorial
+710	configure	configured
+711	quotient	quotient
+712	transducer	transducer
+713	bijection	bijection
+714	stride	stride
+715	import	imports
+716	alias	alias
+717	vortex	vortex
+718	directory	directories
+719	polynomially	polynomially
+720	proxy	proxies
+721	descent	descent
+722	linearization	linearization
+723	triangulation	triangulation
+724	-	tributed	断词残片
+725	message	messaging
+726	multipath	multipath
+727	-	pareto	专名/冠名词
+728	expressible	expressible
+729	baseline	baselines
+730	perpendicular	perpendicular
+731	tradeoff	tradeoffs
+732	animation	animations
+733	blog	blog
+734	-	lagrangian	专名/冠名词
+735	quantile	quantile
+736	stereo	stereo
+737	suffix	suffix
+738	cursor	cursor
+739	tensor	tensor
+740	tracker	tracker
+741	decidable	decidable
+742	propositional	propositional
+743	router	routers
+744	warp	warping
+745	-	vms	缩写
+746	overflow	overflow
+747	variational	variational
+748	preorder	preorder
+749	undecidable	undecidable
+750	forensic	forensic
+751	gateway	gateway
+752	stimulus	stimuli
+753	virtualization	virtualization
+754	subscription	subscription
+755	algebra	algebras
+756	pedestrian	pedestrian
+757	trait	traits
+758	perceptual	perceptual
+759	scheduler	schedulers
+760	biometric	biometric
+761	disjunctive	disjunctive
+762	gossip	gossip
+763	learnable	learnable
+764	checkpoint	checkpoint
+765	stroke	strokes
+766	constructor	constructors
+767	physiological	physiological
+768	-	haskell	专名/冠名词
+769	fingerprint	fingerprint

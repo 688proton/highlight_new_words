@@ -6,6 +6,7 @@
  *   scripts/data/fetch-raw.sh .cache/data-raw [--with-ultimate]
  *   node scripts/data/build-data.mjs --raw .cache/data-raw [--out public/data] [--report report.json] [--audit audit.tsv]
  *     --audit 输出短释义审计表（可疑选义打标，供人工复核后补进 short-overrides.tsv，见 auditFlags）
+ *     --external-audit 外部词表书审计表路径；--out 为 public/data 时默认 scripts/data/external-books-audit.tsv（随仓库提交：每个原始词条的去向），否则不写
  *
  * 输入（--raw 目录）：
  *   ecdict.csv                         ECDICT（MIT）：音标/释义/考试标签/COCA(frq)/BNC 排名/词形变化(exchange)
@@ -13,12 +14,14 @@
  *   cefrj/cefrj-vocabulary-profile-1.5.csv  CEFR-J Wordlist 1.5（免费商用，需署名）：A1–B2 分级
  *   kyle/7 SAT-乱序.txt、kyle/tsv_专四.txt、kyle/tsv_专八.txt  KyleBing/english-vocabulary（BSD-3）：只取词表
  *   ultimate/ultimate.csv              可选（仓库产物带它生成），ECDICT-ultimate（MIT）：pos 词性占比与更规整的释义行（短释义打分、完整释义 f）
+ *   ngsl/*.csv                         NGSL Project 系列词表（CC BY-SA 4.0）：NGSL+SUP、NGSL-Spoken、NAWL、BSL、TSL（fetch-raw.sh 按 sha256 锁定）
+ *   moel.tsv、twlracs.tsv（脚本同目录） 需人工清洗的源（xlsx/论文 PDF 附录）清洗后的词表，文件头写明来源、许可与修改
  *   short-overrides.tsv（脚本同目录）   行内短释义人工覆盖表
  *   verb-overrides.tsv（脚本同目录）    动词短释义 v 人工覆盖/置空表（格式约束与解析见 verb-short.mjs）
  *
  * 输出（--out 目录，默认 public/data，结构见 src/core/wordbook/types.ts、src/core/dict/types.ts）：
  *   books/index.json        BookCatalog：词书目录（词数/描述/分类/级别/增量关系）
- *   books/<id>.json         BookDataFile：小写原形，已排序
+ *   books/<id>.json         BookDataFile：小写原形，已排序（含 ladder 的 base 文件 cefr-a1/coca-top，不出现在目录 books 列表中）
  *   dict/<a-z>.json         DictShardFile 短表：p 音标、s 行内短释义、v 动词短释义（可选）、g 考试标签、l 级别、r 词频排名（高亮/行内翻译热路径）
  *   dict/full/<a-z>.json    DictShardFile 全表：f 完整释义、x 词形变化（卡片展开时才加载）
  *   NOTICE.txt              数据来源与许可声明
@@ -28,11 +31,14 @@
  *   - 考试（exam）：中考/高考/四级/六级/考研/雅思/托福/GRE/SAT/专四/专八，按书去掉“基础词”（低于该考试起点的 CEFR 级别）
  *   - 增量（exam + delta）：如“六级新增”= 六级 − 四级 − 高考 − 中考
  *   - 词频（frequency）：COCA 前 N 之外
+ *   - 通用核心词（core）：NGSL、NGSL-Spoken；专业领域（domain）：NAWL、BSL、TSL、MOEL、计算机 TWLRACS 三档
+ *   - 包含体系（ladder）：级别 cefr、词频 coca 各是一组，作熟词本时取“低于本档”的补集 = base 文件 + 同组更低各档自身词
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import zlib from 'node:zlib';
+import { fileURLToPath } from 'node:url';
 import { isCleanVerbShort, parseVerbOverrides } from './verb-short.mjs';
 
 // ---------------------------------------------------------------------------
@@ -47,6 +53,18 @@ const RAW = arg('--raw', '.cache/data-raw');
 const OUT = arg('--out', 'public/data');
 const REPORT = arg('--report');
 const AUDIT = arg('--audit');
+/**
+ * --keep-dict <旧 data 目录>：构建后校验词典“只追加”——旧 dict/、dict/full/ 分片的每个词条在新产物中都存在且 JSON 值相等，
+ * 新增词条只能是外部词表书的追加词（审计 added）。不传则不校验（tests/unit/data.test.ts 按基线做同样的校验）
+ */
+const KEEP_DICT = arg('--keep-dict');
+/**
+ * 外部词表书审计（随仓库提交，记录每个原始词条的去向，复核词数差异用）。
+ * 只有输出到仓库默认目录 public/data 时才默认写 scripts/data/external-books-audit.tsv；
+ * --out 指向临时目录做验证构建时不写，避免覆盖仓库文件（需要时显式传 --external-audit）
+ */
+const EXTERNAL_AUDIT = arg('--external-audit',
+  path.resolve(OUT) === path.resolve('public/data') ? fileURLToPath(new URL('./external-books-audit.tsv', import.meta.url)) : undefined);
 if (!fs.existsSync(path.join(RAW, 'ecdict.csv'))) {
   console.error(`缺少 ${RAW}/ecdict.csv，先运行 scripts/data/fetch-raw.sh ${RAW}`);
   process.exit(1);
@@ -354,10 +372,14 @@ function isCommonInflectionOutside(w, bookSet) {
 }
 /** 每本书去掉的屈折形式（--report 输出，便于复核） */
 const droppedInflections = new Map();
-function addBook(meta, words, extendsId) {
+/**
+ * inflectionFilter=false：不做上面的屈折过滤。外部词表书的词头由原表人工选定（criteria、hives、sensing、cleaner 是独立词条），
+ * 按 ECDICT 词元关系过滤会误删，改由 EXTERNAL_INFLECTIONS 显式列出要去掉的屈折词
+ */
+function addBook(meta, words, extendsId, inflectionFilter = true) {
   const candidates = [...new Set(words)].filter((w) => WORD_RE.test(w) && !NOT_WORDS.has(w));
   const candidateSet = new Set(candidates);
-  const dropped = candidates.filter((w) => isCommonInflectionOutside(w, candidateSet));
+  const dropped = inflectionFilter ? candidates.filter((w) => isCommonInflectionOutside(w, candidateSet)) : [];
   const droppedSet = new Set(dropped);
   const list = candidates.filter((w) => !droppedSet.has(w)).sort();
   droppedInflections.set(meta.id, dropped.sort());
@@ -381,26 +403,30 @@ const LEVEL_BOOKS = [
 for (const b of [...LEVEL_BOOKS].reverse()) {
   const name = CEFR_NAMES[b.lv];
   const harder = CEFR_NAMES[b.lv + 1];
+  // 作熟词本 = 低于本档：cefr-b2 → “A1–B1（B2 以下）”，cefr-a2 → “A1（A2 以下）”
+  const below = b.lv > 2 ? `A1–${CEFR_NAMES[b.lv - 1]}` : 'A1';
   addBook({
     id: `cefr-${name.toLowerCase()}`, name: b.name, nameEn: `CEFR ${name}+`, short: `${name}+`, category: 'level', level: b.lv,
+    ladder: 'cefr', knownName: `${below}（${name} 以下）`, keywords: ['cefr', name.toLowerCase(), b.name.split(' ')[1], '难度', '级别'],
     source: SRC_CEFRJ,
     description: `高亮 ${name} 及以上的词。${b.desc}`,
   }, [...levelOf].filter(([, l]) => l >= b.lv).map(([w]) => w), harder ? `cefr-${harder.toLowerCase()}` : undefined);
 }
 
 // 7.2 考试（去基础词）：base = 该考试默认已会的 CEFR 级别上限（低于 base+1 的词去掉）
+// keywords：搜索别名（中英、带不带连字符都列上，UI 搜索还会再做去空格/连字符归一）
 const EXAM_BOOKS = [
-  { id: 'zk', name: '中考', nameEn: 'Zhongkao', short: '中考', level: 1, base: 0, src: SRC_ECDICT },
-  { id: 'gk', name: '高考', nameEn: 'Gaokao', short: '高考', level: 2, base: 1, src: SRC_ECDICT },
-  { id: 'cet4', name: '大学英语四级', nameEn: 'CET-4', short: '四级', level: 3, base: 2, src: SRC_ECDICT },
-  { id: 'cet6', name: '大学英语六级', nameEn: 'CET-6', short: '六级', level: 4, base: 3, src: SRC_ECDICT },
-  { id: 'kaoyan', name: '考研', nameEn: 'Postgraduate Exam', short: '考研', level: 5, base: 3, src: SRC_ECDICT },
-  { id: 'tem4', name: '英语专业四级', nameEn: 'TEM-4', short: '专四', level: 5, base: 3, src: SRC_KYLE },
-  { id: 'ielts', name: '雅思', nameEn: 'IELTS', short: '雅思', level: 6, base: 3, src: SRC_ECDICT },
-  { id: 'toefl', name: '托福', nameEn: 'TOEFL', short: '托福', level: 7, base: 3, src: SRC_ECDICT },
-  { id: 'sat', name: 'SAT', nameEn: 'SAT', short: 'SAT', level: 8, base: 4, src: SRC_KYLE },
-  { id: 'tem8', name: '英语专业八级', nameEn: 'TEM-8', short: '专八', level: 8, base: 4, src: SRC_KYLE },
-  { id: 'gre', name: 'GRE', nameEn: 'GRE', short: 'GRE', level: 9, base: 4, src: SRC_ECDICT },
+  { id: 'zk', name: '中考', nameEn: 'Zhongkao', short: '中考', level: 1, base: 0, src: SRC_ECDICT, keywords: ['zhongkao', '初中', '中考'] },
+  { id: 'gk', name: '高考', nameEn: 'Gaokao', short: '高考', level: 2, base: 1, src: SRC_ECDICT, keywords: ['gaokao', '高中', '高考'] },
+  { id: 'cet4', name: '大学英语四级', nameEn: 'CET-4', short: '四级', level: 3, base: 2, src: SRC_ECDICT, keywords: ['cet4', 'cet-4', '四级', '大学英语四级'] },
+  { id: 'cet6', name: '大学英语六级', nameEn: 'CET-6', short: '六级', level: 4, base: 3, src: SRC_ECDICT, keywords: ['cet6', 'cet-6', '六级', '大学英语六级'] },
+  { id: 'kaoyan', name: '考研', nameEn: 'Postgraduate Exam', short: '考研', level: 5, base: 3, src: SRC_ECDICT, keywords: ['kaoyan', 'postgraduate', '考研', '研究生'] },
+  { id: 'tem4', name: '英语专业四级', nameEn: 'TEM-4', short: '专四', level: 5, base: 3, src: SRC_KYLE, keywords: ['tem4', 'tem-4', '专四', '专业四级'] },
+  { id: 'ielts', name: '雅思', nameEn: 'IELTS', short: '雅思', level: 6, base: 3, src: SRC_ECDICT, keywords: ['ielts', '雅思'] },
+  { id: 'toefl', name: '托福', nameEn: 'TOEFL', short: '托福', level: 7, base: 3, src: SRC_ECDICT, keywords: ['toefl', '托福'] },
+  { id: 'sat', name: 'SAT', nameEn: 'SAT', short: 'SAT', level: 8, base: 4, src: SRC_KYLE, keywords: ['sat', '美国高考'] },
+  { id: 'tem8', name: '英语专业八级', nameEn: 'TEM-8', short: '专八', level: 8, base: 4, src: SRC_KYLE, keywords: ['tem8', 'tem-8', '专八', '专业八级'] },
+  { id: 'gre', name: 'GRE', nameEn: 'GRE', short: 'GRE', level: 9, base: 4, src: SRC_ECDICT, keywords: ['gre', '美国研究生'] },
 ];
 const examFinal = new Map();
 for (const b of EXAM_BOOKS) {
@@ -410,7 +436,7 @@ for (const b of EXAM_BOOKS) {
   examFinal.set(b.id, new Set(words));
   const removed = raw.size - words.length;
   addBook({
-    id: b.id, name: b.name, nameEn: b.nameEn, short: b.short, category: 'exam', level: b.level, source: b.src,
+    id: b.id, name: b.name, nameEn: b.nameEn, short: b.short, category: 'exam', level: b.level, source: b.src, keywords: b.keywords,
     description: b.base > 0
       ? `${b.name}词汇，已去掉 ${removed} 个 ${CEFR_NAMES[b.base]} 及以下的基础词`
       : `${b.name}词汇`,
@@ -435,6 +461,7 @@ for (const d of DELTA_BOOKS) {
   const of = EXAM_BOOKS.find((b) => b.id === d.of);
   addBook({
     id: d.id, name: d.name, nameEn: `${of.nameEn} only`, short: d.short, category: 'exam', level: d.level, source: of.src,
+    keywords: [...of.keywords, '新增', '增量'],
     delta: { of: d.of, minus: d.minus },
     description: `${of.name}中不属于${d.minus.map((id) => examName[id]).join('/')}的词，适合已过${examName[d.minus.at(-1)]}的读者`,
   }, [...base].filter((w) => !minus.has(w)));
@@ -447,10 +474,234 @@ for (const [i, n] of [...FREQ_BOOKS.entries()].reverse()) {
   const k = `${n / 1000}k`;
   addBook({
     id: `coca-${k}`, name: `常用 ${n} 词之外`, nameEn: `Beyond COCA top ${n}`, short: `${k}+`, category: 'frequency', level: n / 1000,
+    // 作熟词本 = 低于本档（coca-top ∪ 更低各档）：词频前 N 的词，加上本组各档都不收的低于 B1 的词（见 7.5 节 coca-top），
+    // 名称写明 A1–A2，避免用户以为只剔除前 N 个常用词：coca-3k → “常用前 3000 词及 A1–A2 词”
+    ladder: 'coca', knownName: `常用前 ${n} 词及 A1–A2 词`, keywords: ['coca', k, String(n), '词频', '常用词'],
     source: 'ECDICT COCA/BNC 词频排名',
     description: `高亮词频排名 ${n} 之后的词（视前 ${n} 个常用词为已会）`,
   }, [...levelOf.keys()].filter((w) => rankOf(w) > n && levelOf.get(w) >= 3), next ? `coca-${next / 1000}k` : undefined);
 }
+
+// ---------------------------------------------------------------------------
+// 词典收录范围（第 8 节输出的就是它）
+//   dictWords = levelOf ∪ 词频前 DICT_RANK_MAX 原形 ∪ 7.1–7.4 词书词。
+//   7.6/7.7 外部词表书**只追加**词条：原词典没有、ECDICT 有中文释义的词（runtime、tuple、lessee、rubella）追加进 dictWords，
+//   已有词条（coreDictWords）的所有字段与新增词书前逐字节一致（第 8 节不让追加词影响已有词条的打分，见 zhFreq）；
+//   ECDICT 没有中文释义（词条不存在或只有 [网络] 释义，如 polynomially）的词在审计表记为 nodict
+// ---------------------------------------------------------------------------
+const dictWords = new Set(levelOf.keys());
+for (const [w] of ecdict) if (rankOf(w) <= DICT_RANK_MAX && isLemmaCandidate(w)) dictWords.add(w);
+// 词书中的每个词都必须有词典条目（CEFR-J 收录的 april 等首字母大写词）
+for (const list of bookWords.values()) for (const w of list) dictWords.add(w);
+/** 新增外部词表书之前的词典收录范围：这些词条只读不改（tests/fixtures/data-baseline.json 按“旧词条不变 + 只追加”校验） */
+const coreDictWords = new Set(dictWords);
+
+// 7.5 包含体系（ladder）的 base 文件：组内最低档以下的词，不进目录 books 列表，只在作熟词本取“低于本档”补集时加载。
+//     base 必须盖住“最低档之下”的全部词典词，否则作熟词本时这些词仍会被别的生词本高亮：
+//     - cefr-a1 = 级别 A1 ∪ CEFR-J 标为 A1 但因 ECDICT 词条首字母大写被当作专名、未进 levelOf 的词（monday、january、i）
+//     - coca-top = 词频前 3000 的全部词典词 ∪ inventory 中 B1 以下的词（coca-3k 收排名 >3000 且 ≥B1，见 7.4 的筛选条件，两者互补）
+const LADDERS = {
+  cefr: {
+    base: 'cefr-a1',
+    words: () => [...dictWords].filter((w) => (levelOf.has(w) ? levelOf.get(w) < 2 : cefr.get(w)?.level === 1)),
+  },
+  coca: {
+    base: 'coca-top',
+    words: () => [...dictWords].filter((w) => rankOf(w) <= FREQ_BOOKS[0] || (levelOf.has(w) && levelOf.get(w) < 3)),
+  },
+};
+
+// ---------------------------------------------------------------------------
+// 7.6 外部词表词书：通用核心词（core）与专业领域（domain）
+//     来源词表本身就是词头（词元）表，构建时不再二次词元化（ECDICT 词元化会把 rebound→rebind、hives→hive、
+//     ordering→order 这类独立词条换成另一个词）；需要词元化的 moel.tsv/twlracs.tsv 已在文件里人工给出词元列，
+//     NGSL 系列只把 EXTERNAL_HEADWORD_FIXES 逐个列出的词头换掉（不规则复数换成原形、源表笔误换成正确拼写）。
+//     - 字形：重音字母折叠（résumé → resume），转小写；连字符/撇号/空格词（e-book、o'clock、ice cream）按 WORD_RE 不收
+//     - 词缀/截断碎片：NOT_WORDS 与 EXTERNAL_NOT_WORDS 不收；屈折形式只去掉 EXTERNAL_INFLECTIONS（不走 addBook 的屈折过滤）
+//     - 词典：原词典没有、ECDICT 有中文释义的词收录并追加词典条目（审计表记 added），已有词条不变；ECDICT 没有中文释义（不存在或只有 [网络] 释义）的记 nodict
+//     - 不去 A1–A2 基础词：词书忠实于原表，作熟词本时就是原表集合；嫌基础词多可把 cefr-a2 设为熟词本
+//     每个原始词条的去向（收录/合并/去掉及原因）写入 scripts/data/external-books-audit.tsv（随仓库提交，可复核词数差异）
+// ---------------------------------------------------------------------------
+/**
+ * 外部词表里的词缀/截断碎片与噪声词条（只作用于本节新书；不并入全局 NOT_WORDS，避免改变已有词书）：
+ * - super/trans：NAWL/BSL 把前缀当独立词条收录；capita/annum：per capita、per annum 拆出的拉丁词
+ * - mister：BSL/TSL 的高频词条，实为语料中 “Mr.” 的展开，页面上写作 Mr. 不会出现 mister
+ */
+const EXTERNAL_NOT_WORDS = new Set(['super', 'trans', 'capita', 'annum', 'mister']);
+/**
+ * 外部词表中要去掉的高频词屈折形式：页面上几乎总是 find/bind 的过去式，单独高亮会按罕见义误译（found=创立、bound=跳跃）。
+ * 其余屈折形词头（cleaner 清洁工、hives 荨麻疹、criteria、sensing）是原表选定的独立词条，保留
+ */
+const EXTERNAL_INFLECTIONS = new Set(['found', 'founds', 'bound']);
+/**
+ * NGSL 系列词表中要换掉的词头（页面上的原词形由词形还原命中原形）。
+ * 只列逐个确认过的，不做通用词元化（ECDICT 词元化会把 rebound→rebind、hives→hive 换成另一个词）：
+ * - 不规则复数：criteria、bacteria、salespeople 换成词典已有的原形（与 moel.tsv/twlracs.tsv 第 2 列的人工词元化同一规则）
+ * - 源表笔误：unauthorize → unauthorized（BSL stats 表的笔误，同一来源的教学版/字母表版写作 unauthorized）
+ * 独立词头即使词典有相近词也不换（outdated≠outdate“使过时”、analytical 不换成 analytic），按原词头从 ECDICT 追加词条
+ */
+const EXTERNAL_HEADWORD_FIXES = new Map([
+  ['criteria', 'criterion'], ['bacteria', 'bacterium'], ['salespeople', 'salesperson'],
+  ['unauthorize', 'unauthorized'],
+]);
+/**
+ * 单本书的噪声词条（原表里与该领域无关、来自语料偶然高频的词），只对该书去掉：
+ * - BSL：pizza、corn、alas（verify-bsl 复核：商务语料偶然高频，不代表商务词汇）
+ */
+const EXTERNAL_NOISE = { bsl: new Set(['pizza', 'corn', 'alas']) };
+/** 外部词表数据目录 */
+const NGSL_DIR = path.join(RAW, 'ngsl');
+/** NGSL 站的 CSV 有 UTF-8（带 BOM）也有 latin1（NAWL/TSL）：按 UTF-8 严格解码，失败回退 latin1 */
+function readText(file) {
+  const buf = fs.readFileSync(file);
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buf).replace(/^﻿/, '');
+  } catch {
+    return new TextDecoder('latin1').decode(buf);
+  }
+}
+/** 读 CSV 第 col 列（简单逗号分隔，NGSL 系列无引号字段）；header 为 true 时跳过表头 */
+function csvColumn(file, col, header) {
+  return readText(file).split(/\r?\n/).slice(header ? 1 : 0).map((l) => l.split(',')[col]?.trim()).filter(Boolean);
+}
+/** 脚本同目录的清洗后词表（moel.tsv、twlracs.tsv）：跳过 # 注释行，按列拆分（twlracs.tsv 第 2 列为 - 表示不收，原因在第 4 列） */
+function readTsv(name) {
+  return fs.readFileSync(new URL(`./${name}`, import.meta.url), 'utf8').split('\n')
+    .filter((l) => l.trim() && !l.startsWith('#'))
+    .map((l) => l.split('\t').map((x) => x.trim()));
+}
+/** @type {string[]} 外部词书审计行：书 id、原始词条、结果词、去向 */
+const externalAudit = [];
+/**
+ * 外部词表 -> 词书词。rawEntries 为 [原始词条, 词元] 列表（词元缺省为原始词条；词元为 - 表示清洗词表里人工标为不收）。
+ * 去向：ok 收录 / dup 与前面的词条合并 / excluded 清洗词表标为不收（专名、缩写、断词残片）/
+ * form 非单个小写单词（短语、连字符、撇号）/ affix 词缀碎片或伪单词 / noise 该书的噪声词（EXTERNAL_NOISE）/
+ * inflection 高频词屈折形式（EXTERNAL_INFLECTIONS）/ added 收录且向词典追加条目（原词典没有、ECDICT 有中文释义）/
+ * nodict ECDICT 没有中文释义（词条不存在或只有 [网络] 释义，translationLines 已滤掉），不收
+ */
+function externalWords(id, rawEntries) {
+  /** 能收进词书的词：已在词典，或 ECDICT 有中文释义（可追加词条） */
+  const hasZhEntry = (x) => coreDictWords.has(x) || ecdict.get(x)?.lines.some((l) => CJK_RE.test(l));
+  const out = [];
+  const seen = new Set();
+  for (const [raw, lemma] of rawEntries) {
+    if (lemma === '-') {
+      externalAudit.push([id, raw, '-', 'excluded']);
+      continue;
+    }
+    const fold = (x) => x.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    let w = EXTERNAL_HEADWORD_FIXES.get(fold(lemma || raw)) ?? fold(lemma || raw);
+    // 清洗词表人工给的词元没有中文释义、原词形本身有时退回原词形（与“原词形是词典词条的保留”同一规则）：
+    // precomputed 的原形 precompute 在 ECDICT 只有 [网络] 释义，而 precomputed 本身有“[计] 预先计算的”
+    if (lemma && !hasZhEntry(w) && WORD_RE.test(fold(raw)) && hasZhEntry(fold(raw))) w = fold(raw);
+    let fate;
+    if (!WORD_RE.test(w)) fate = 'form';
+    else if (EXTERNAL_NOISE[id]?.has(w)) fate = 'noise';
+    else if (EXTERNAL_NOT_WORDS.has(w) || NOT_WORDS.has(w)) fate = 'affix';
+    else if (EXTERNAL_INFLECTIONS.has(w)) fate = 'inflection';
+    else if (seen.has(w)) fate = 'dup';
+    else if (coreDictWords.has(w)) {
+      fate = 'ok';
+      out.push(w);
+    } else if (hasZhEntry(w)) {
+      // 按词判定（与哪本书先处理无关）：同一个追加词在每本书的审计行里都记 added
+      fate = 'added';
+      dictWords.add(w);
+      out.push(w);
+    } else fate = 'nodict';
+    if (WORD_RE.test(w)) seen.add(w);
+    externalAudit.push([id, raw, w, fate]);
+  }
+  return out;
+}
+
+const NGSL_SITE = 'https://www.newgeneralservicelist.com';
+const SRC_NGSL = 'NGSL Project';
+const CC_BY_SA = 'CC BY-SA 4.0';
+/** NGSL 系列 CSV 第 0 列为词头：[原始词条, 词元] 中词元同原词条 */
+const ngslHeads = (file, header) => csvColumn(path.join(NGSL_DIR, file), 0, header).map((w) => [w]);
+/** 外部词表书：license/url 供 UI 展示许可（CC BY-SA 要求界面可见），keywords 为搜索别名 */
+const EXTERNAL_BOOKS = [
+  {
+    id: 'ngsl', name: '通用核心词 NGSL', nameEn: 'New General Service List', short: 'NGSL', category: 'core', level: 1,
+    url: `${NGSL_SITE}/new-general-service-list`, keywords: ['ngsl', 'general service list', '核心词', '通用', '基础词', '高频词'],
+    description: '新通用词表 NGSL 1.2（含星期/月份/数字等补充词）：日常英文最常用的核心词，适合整体作熟词本',
+    entries: () => [...ngslHeads('NGSL_12_stats.csv', true), ...ngslHeads('SUP_lemmatized.csv', false)],
+  },
+  {
+    id: 'ngsl-spoken', name: '口语核心词 NGSL-S', nameEn: 'NGSL-Spoken', short: 'NGSL-S', category: 'core', level: 2,
+    url: `${NGSL_SITE}/ngsl-spoken`, keywords: ['ngsl', 'ngsl-s', 'spoken', '口语', '核心词', '通用'],
+    description: 'NGSL-Spoken 1.2：日常口语最常用的核心词',
+    entries: () => ngslHeads('NGSL-Spoken_12_stats.csv', true),
+  },
+  {
+    id: 'nawl', name: '学术科研 NAWL', nameEn: 'New Academic Word List', short: 'NAWL', category: 'domain', level: 1,
+    url: `${NGSL_SITE}/new-academic-word-list`, keywords: ['nawl', 'academic', '学术', '科研', '论文'],
+    description: '新学术词表 NAWL 1.2：NGSL 之外学术文本常用的词，适合读论文/教材',
+    // 教学版 CSV 无表头，首列为词头（其后是机械生成的词形，不用）
+    entries: () => ngslHeads('NAWL_12_lemmatized_for_teaching.csv', false),
+  },
+  {
+    id: 'bsl', name: '商务 BSL', nameEn: 'Business Service List', short: 'BSL', category: 'domain', level: 2,
+    url: `${NGSL_SITE}/business-service-list`, keywords: ['bsl', 'business', '商务', '商业', '经济', '金融'],
+    // 官方 Band 1/2/3 只是按排名机械三等分，不拆书
+    description: '商务服务词表 BSL 1.20：NGSL 之外商务文本常用的词',
+    entries: () => ngslHeads('BSL_120_stats.csv', true),
+  },
+  {
+    // 显示名不用 TOEIC 商标（原名 TOEIC Service List，见 NOTICE）
+    id: 'tsl', name: '职场服务词 TSL', nameEn: 'TSL Workplace List', short: 'TSL', category: 'domain', level: 3,
+    url: `${NGSL_SITE}/toeic-service-list`, keywords: ['tsl', 'toeic', '托业', '职场', '办公', '服务'],
+    description: 'TSL 1.2：NGSL 之外职场与日常服务场景常用的词',
+    entries: () => ngslHeads('TSL_12_stats.csv', true),
+  },
+  {
+    id: 'moel', name: '医学常用词 MOEL', nameEn: 'Medical Oral English List', short: 'MOEL', category: 'domain', level: 4,
+    source: `${SRC_NGSL}（Chartrand & Dilenschneider）`,
+    url: `${NGSL_SITE}/medical-oral-english-list`, keywords: ['moel', 'medical', 'medicine', '医学', '医疗', '医生', '看病'],
+    description: '医学口语词表 MOEL 1.0：医患交流常用的医学词（只收单词条目，不含多词短语）',
+    entries: () => readTsv('moel.tsv'),
+  },
+];
+for (const b of EXTERNAL_BOOKS) {
+  const { entries, description, ...meta } = b;
+  const words = externalWords(b.id, entries());
+  addBook({ source: SRC_NGSL, license: CC_BY_SA, ...meta, description }, words, undefined, false);
+}
+
+// 7.7 计算机：TWLRACS 按论文附录位次切成嵌套三档（前 250 ⊂ 前 500 ⊂ 全部），组内单选（group，非 ladder：作熟词本就是集合本身）
+//     词数小于 N：twlracs.tsv 每个附录位次一行，同一词元只保留首次位次，再去掉不收的行（专名/缩写/断词残片、ECDICT 没有中文释义，明细见审计文件）
+const TWLRACS = readTsv('twlracs.tsv').map(([rank, lemma, form]) => ({ rank: Number(rank), lemma, form }));
+const CS_BOOKS = [
+  { id: 'cs-250', top: 250, name: '计算机 常用前 250', short: 'CS 250', level: 5 },
+  { id: 'cs-500', top: 500, name: '计算机 常用前 500', short: 'CS 500', level: 6 },
+  { id: 'cs-all', top: Infinity, name: '计算机 全部', short: 'CS', level: 7 },
+];
+for (const b of CS_BOOKS) {
+  const entries = TWLRACS.filter((x) => x.rank <= b.top);
+  const words = externalWords(b.id, entries.map((x) => [x.form, x.lemma]));
+  // 说明里写出附录词条数与收录数，两者之差就是审计表里该书未收录（非 ok/added）的行；未收原因按该书审计行实际出现的去向列出
+  const range = Number.isFinite(b.top) ? `附录位次前 ${b.top} 的 ${entries.length} 个词条` : `附录全部 ${entries.length} 个词条`;
+  const fates = new Set(externalAudit.filter((r) => r[0] === b.id).map((r) => r[3]));
+  const REASONS = { dup: '重复词元', excluded: '专名/缩写/断词残片', affix: '词缀碎片', nodict: 'ECDICT 没有中文释义的词' };
+  const reasons = Object.entries(REASONS).filter(([f]) => fates.has(f)).map(([, t]) => t);
+  addBook({
+    id: b.id, name: b.name, nameEn: `Computer Science${Number.isFinite(b.top) ? ` top ${b.top}` : ''}`, short: b.short, category: 'domain', level: b.level,
+    group: 'cs', source: 'Chen & Lei 2019（TWLRACS）', license: 'CC BY 4.0', url: 'https://doi.org/10.5539/elt.v12n10p131',
+    // 来源是计算机科研论文语料，关键词不写“编程/程序员”，避免误导为编程文档词表
+    keywords: ['cs', 'computer science', 'twlracs', '计算机', '计算机科学', '科研论文', '技术词'],
+    description: `计算机科研论文技术词表 TWLRACS（按论文语料词频，非官方分级）：${range}，收录 ${words.length} 个，其余为${reasons.join('、')}`,
+  }, words, undefined, false);
+}
+
+/**
+ * 7.5 的 base 文件词：与词书相同的字形过滤，不做屈折过滤（最低档里的 found/means 这类屈折词条作熟词时也应视为已会）。
+ * 注意：更高档词书在 addBook 中按屈折过滤去掉的已分级词（meaning、thought、used、cleaner…）既不在 base 也不在任何档的词书里；
+ * 运行时内置熟词本按屈折原形判断（Matcher#knownBuiltinHas：analyze().base + inflections），这些词一般随其原形（mean、think、use…）
+ * 一起被视为已会；例外是某本已启用的内置生词本自身收录了该词形（如 bsl/zk 收 meaning）时按该书判断、仍会高亮。
+ * 不补进 base：base 对所有档生效，补进去会让 B2 的 lighter 在 cefr-a2 作熟词时也算已会；按档补齐需要 ladders 契约支持“按档补充文件”
+ */
+const ladderBaseWords = new Map(Object.values(LADDERS).map((l) => [l.base, [...new Set(l.words())].filter((w) => WORD_RE.test(w) && !NOT_WORDS.has(w)).sort()]));
 
 // ---------------------------------------------------------------------------
 // 8. 词典
@@ -459,10 +710,8 @@ for (const [i, n] of [...FREQ_BOOKS.entries()].reverse()) {
 /** @type {Map<string, {pos:string, lines:string[]}>} */
 const ultimate = new Map();
 const ULT = path.join(RAW, 'ultimate', 'ultimate.csv');
-const dictWords = new Set(levelOf.keys());
-for (const [w] of ecdict) if (rankOf(w) <= DICT_RANK_MAX && isLemmaCandidate(w)) dictWords.add(w);
-// 词书中的每个词都必须有词典条目（CEFR-J 收录的 april 等首字母大写词）
-for (const list of bookWords.values()) for (const w of list) dictWords.add(w);
+// dictWords（词典收录范围）= 7.5 前构建的 coreDictWords + 7.6/7.7 追加的词：词书词必有词典条目
+for (const list of bookWords.values()) for (const w of list) if (!dictWords.has(w)) throw new Error(`词书词缺词典条目：${w}`);
 if (fs.existsSync(ULT)) {
   console.time('ultimate');
   const rl = readline.createInterface({ input: fs.createReadStream(ULT, 'utf8'), crlfDelay: Infinity });
@@ -608,7 +857,8 @@ const senseKeyOf = (s, pos) => (pos === 'v' ? s.replace(/^使(?=..)/, '') : (pos
 const zhFreq = new Map();
 for (const [w, e] of ecdict) {
   if (rankOf(w) > DICT_RANK_MAX) continue;
-  for (const lines of [e.lines, ultimate.get(w)?.lines ?? []]) {
+  // ultimate 只读 dictWords 的行：追加词（7.6/7.7）的 ultimate 行不计入，否则追加词条会改变已有词条的打分（已有词条须逐字节不变）
+  for (const lines of [e.lines, (coreDictWords.has(w) && ultimate.get(w)?.lines) || []]) {
     for (const line of lines) for (const { text } of senseItems(line)) {
       const k = senseKeyOf(text, posOfLine(line));
       zhFreq.set(k, (zhFreq.get(k) ?? 0) + 1);
@@ -824,12 +1074,20 @@ function emit(rel, content) {
   const buf = Buffer.from(content);
   stats.files[rel] = { raw: buf.length, gzip: zlib.gzipSync(buf, { level: 9 }).length };
 }
+// --keep-dict 的旧分片先读进内存（可以就是 --out 目录，下面会被清理）：相对路径 -> 分片对象
+const keptDict = new Map();
+if (KEEP_DICT) {
+  for (const sub of ['dict', 'dict/full']) {
+    const dir = path.join(KEEP_DICT, sub);
+    for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('.json'))) keptDict.set(`${sub}/${f}`, JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')));
+  }
+}
 // 清理旧产物（只清本脚本拥有的 books/ dict/，不动其他分片放在 data/ 下的文件）
 fs.rmSync(path.join(OUT, 'books'), { recursive: true, force: true });
 fs.rmSync(path.join(OUT, 'dict'), { recursive: true, force: true });
 
 // 目录按分类 + 难度排序，便于 UI 直接展示
-const CATEGORY_ORDER = ['level', 'exam', 'frequency'];
+const CATEGORY_ORDER = ['level', 'exam', 'frequency', 'core', 'domain'];
 catalog.sort((a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category) || a.level - b.level || (a.delta ? 1 : 0) - (b.delta ? 1 : 0));
 for (const meta of catalog) {
   const parentId = bookExtends.get(meta.id);
@@ -838,7 +1096,10 @@ for (const meta of catalog) {
   emit(`books/${meta.id}.json`, JSON.stringify(parent ? { id: meta.id, words, extends: [parentId] } : { id: meta.id, words }));
   stats.books[meta.id] = meta.size;
 }
-emit('books/index.json', JSON.stringify({ version: 2, books: catalog }, null, 1));
+for (const [id, words] of ladderBaseWords) emit(`books/${id}.json`, JSON.stringify({ id, words }));
+// ladders：包含体系组 -> base 文件（不在 books 列表中）
+const ladders = Object.fromEntries(Object.entries(LADDERS).map(([k, l]) => [k, { base: l.base }]));
+emit('books/index.json', JSON.stringify({ version: 2, books: catalog, ladders }, null, 1));
 for (const [shard, data] of [...shortShards].sort()) emit(`dict/${shard}.json`, JSON.stringify(data));
 for (const [shard, data] of [...fullShards].sort()) emit(`dict/full/${shard}.json`, JSON.stringify(data));
 emit('NOTICE.txt', `内置词书与词典数据来源（由 scripts/data/build-data.mjs 生成）
@@ -849,7 +1110,54 @@ emit('NOTICE.txt', `内置词书与词典数据来源（由 scripts/data/build-d
   Retrieved from http://www.cefr-j.org/download.html (via https://github.com/openlanguageprofiles/olp-en-cefrj).
   A1–B2 分级。按其使用条款免费用于商业用途，需注明出处。
 - KyleBing/english-vocabulary, BSD-3-Clause. https://github.com/KyleBing/english-vocabulary
-  仅使用 SAT、英语专业四级/八级的单词列表（不含释义）。
+  仅使用 SAT、英语专业四级/八级的单词列表；其余词表只在构建时作“常用义项”排序信号，不输出其释义文本。
+
+以下词表以知识共享许可发布。books/ 下由它们派生的词书文件（ngsl.json、ngsl-spoken.json、nawl.json、bsl.json、
+tsl.json、moel.json）是改编作品，同样以 CC BY-SA 4.0 发布（https://creativecommons.org/licenses/by-sa/4.0/）；
+cs-250.json、cs-500.json、cs-all.json 以 CC BY 4.0 发布（https://creativecommons.org/licenses/by/4.0/）。
+共同的修改：转小写、重音字母折叠（résumé → resume）、合并重复词条、去掉含连字符/撇号/空格的条目与多词短语、
+去掉词缀/截断碎片与伪单词、去掉高频词的过去式词条（found、founds、bound）、
+不规则复数换成原形（criteria → criterion、bacteria → bacterium、salespeople → salesperson）、
+源表笔误改正（unauthorize → unauthorized）、
+只保留 ECDICT 有中文释义的词（runtime、tuple、rubella 等原内置词典没有的词从 ECDICT 追加词典条目，ECDICT 没有中文释义或只有网络释义的不收）、
+格式转换为 JSON 并按字母排序（不保留原表排名/频率）。
+每个原始词条的去向（收录、合并、去掉及原因）见源码仓库的审计表：
+https://github.com/xqdd/highlight-new-words/blob/master/scripts/data/external-books-audit.tsv
+
+- New General Service List (NGSL) 1.2（含 Supplemental 补充词表），by Browne, C., Culligan, B., & Phillips, J.
+  CC BY-SA 4.0. https://www.newgeneralservicelist.com/new-general-service-list
+  额外修改：Supplemental 中的 March、May 与主表的 march、may 合并；去掉 found。
+- NGSL-Spoken 1.2, by Browne, C. & Culligan, B. CC BY-SA 4.0. https://www.newgeneralservicelist.com/ngsl-spoken
+- New Academic Word List (NAWL) 1.2, by Browne, C., Culligan, B., & Phillips, J.
+  CC BY-SA 4.0. https://www.newgeneralservicelist.com/new-academic-word-list
+  额外修改：只取词头列；去掉词缀条目（amino、anti、ex、micro、mid、multi、neo、non、pre、semi、sub、super、trans）与 bound、founds。
+- Business Service List (BSL) 1.20, by Browne, C. & Culligan, B.
+  CC BY-SA 4.0. https://www.newgeneralservicelist.com/business-service-list
+  额外修改：不区分官方 Band；去掉词缀/截断碎片（alpha、anti、beta、capita、annum、ex、inter、macro、micro、mid、mini、multi、neo、non、
+  pre、quasi、semi、sub、super）、mister（语料中 Mr. 的展开）、bound、e-book；去掉噪声词 pizza、corn、alas；
+  stats 表笔误 unauthorize 换成 unauthorized。
+- TOEIC Service List (TSL) 1.2, by Browne, C. & Culligan, B.
+  CC BY-SA 4.0. https://www.newgeneralservicelist.com/toeic-service-list
+  额外修改：由 ISO-8859-1 转码；résumé 折叠后与 resume 合并；
+  去掉 mister、mini、bound 与 e-book、o'clock、ice cream、ma'am、by-law；
+  扩展内显示名为“职场服务词 TSL”。TOEIC 是 ETS 的注册商标，本扩展与 ETS 无关联。
+- Medical Oral English List (MOEL) 1.0, by Chartrand, R. & Dilenschneider, R.
+  CC BY-SA 4.0. https://www.newgeneralservicelist.com/medical-oral-english-list
+  额外修改：去掉不间断空格与重复项；只保留单词条目（多词短语、括注缩写、连字符词不收）；复数与 -ing/-ed 形式人工词元化为
+  词典原形（antibodies → antibody、atria → atrium、bleeding → bleed、choking → choke、tingling → tingle、mumps → mump），
+  原词形本身是词典词条的保留（infected、measles）；原形是无关的另一个词的不词元化（hives≠hive、shingles≠shingle），
+  按原词形收入词书（与 rubella、tonsillitis 一样从 ECDICT 追加词典条目）。
+  清洗后的中间词表（CC BY-SA 4.0）：
+  https://github.com/xqdd/highlight-new-words/blob/master/scripts/data/moel.tsv
+- A Technical Word List for Research Articles in Computer Science (TWLRACS), by Chen, L. & Lei, L. (2019).
+  English Language Teaching, 12(10), 131. https://doi.org/10.5539/elt.v12n10p131
+  CC BY 4.0. https://ccsenet.org/journal/index.php/elt/article/view/0/40859
+  额外修改：从论文 Appendix A 抽取；丢弃排版断词残片、修复截断词；复数与 -ing/-ed 形式统一词元化为词典原形
+  （vertices → vertex、clustering → cluster、slicing/slices → slice、logging → log、encoding → encode、ordering → order），
+  原形没有中文释义而原词形本身是词典词条的保留原词形（precomputed）；去掉专名/冠名词与缩写、alpha、super、macro；
+  同一词元只保留首次位次；按附录位次切成前 250 / 前 500 / 全部三档
+  （按论文语料词频位次切分，非作者给出的官方分级）。清洗后的中间词表（CC BY 4.0）：
+  https://github.com/xqdd/highlight-new-words/blob/master/scripts/data/twlracs.tsv
 `);
 
 function sum(pred) {
@@ -868,6 +1176,68 @@ stats.totals = {
   all: sum(() => true),
 };
 if (REPORT) fs.writeFileSync(REPORT, JSON.stringify({ ...stats, droppedInflections: Object.fromEntries(droppedInflections) }, null, 1));
+// 外部词表书审计：汇总（原始条目数 -> 各去向计数 -> 词书词数）+ 每个原始词条一行
+if (EXTERNAL_AUDIT) {
+  const books = [...EXTERNAL_BOOKS, ...CS_BOOKS].map((b) => b.id);
+  const summary = books.map((id) => {
+    const rows = externalAudit.filter((r) => r[0] === id);
+    const count = {};
+    for (const r of rows) count[r[3]] = (count[r[3]] ?? 0) + 1;
+    return `# ${id}: 原始 ${rows.length} 条 -> 词书 ${bookWords.get(id).length} 词；` + Object.entries(count).sort().map(([k, v]) => `${k}=${v}`).join(' ');
+  });
+  fs.writeFileSync(EXTERNAL_AUDIT, [
+    '# 外部词表书（core/domain）原始词条去向审计，由 scripts/data/build-data.mjs 生成，勿手改',
+    '# 去向：ok 收录 | dup 与前面的词条合并（同一词元/重复项）| form 非单个小写单词（短语、连字符、撇号）',
+    '#       affix 词缀碎片/伪单词（NOT_WORDS、EXTERNAL_NOT_WORDS）| inflection 高频词的屈折形式（found、bound，见 EXTERNAL_INFLECTIONS）',
+    '#       excluded 清洗词表（moel.tsv/twlracs.tsv）第 2 列标为不收（专名/冠名词、缩写、断词残片，原因见该文件第 4 列）| noise 该书的噪声词（EXTERNAL_NOISE）',
+    '#       added 收录，且原内置词典没有、从 ECDICT 追加了词典条目（已有词条不变）| nodict ECDICT 没有中文释义（词条不存在或只有 [网络] 释义），不收',
+    ...summary,
+    'book\traw\tword\tfate',
+    ...externalAudit.map((r) => r.join('\t')),
+  ].join('\n') + '\n');
+}
 if (AUDIT) fs.writeFileSync(AUDIT, ['word\trank\tshort\tflags\tfirst_line', ...auditRows.sort((a, b) => Number(a.split('\t')[1]) - Number(b.split('\t')[1]))].join('\n') + '\n');
 console.log(JSON.stringify(stats.totals));
 console.log(Object.entries(stats.books).map(([k, v]) => `${k}=${v}`).join(' '));
+console.log('ladder base', [...ladderBaseWords].map(([k, v]) => `${k}=${v.length}`).join(' '));
+// 新书词必须有短释义（只收词典词，词典词都有短释义；这里兜底防止以后放宽收词规则时漏掉）
+const noShort = [...EXTERNAL_BOOKS, ...CS_BOOKS].flatMap((b) => bookWords.get(b.id).filter((w) => !shortShards.get(w[0])?.[w]?.s).map((w) => `${b.id}:${w}`));
+if (noShort.length) throw new Error(`新书词缺短释义（补 short-overrides.tsv）：${[...new Set(noShort)].join(' ')}`);
+// 词典只追加：旧词条逐值不变，新增词条只能是外部词表书的追加词
+const addedWords = new Set(externalAudit.filter((r) => r[3] === 'added').map((r) => r[2]));
+// 追加词不能改变旧词书用户看到的行内释义：行内释义先查页面词形（engine.ts#translationKeys），
+// 追加词若是已有词条的屈折形式（ECDICT exchange 列出的 s/p/d/i/3），旧书高亮该词形时会改用追加词条的短释义。
+// 因此这类追加词的短释义必须包含原形的短释义（如 hives=蜂房/荨麻疹、shingles=墙面板/疱疹，原义在前、领域义在后，合计不超过行内显示上限 6 字），
+// 只有下表逐个审过、改换释义属于纠正的例外（原形是罕见或无关的词、-s 形式是学科名）。tests/unit/data.test.ts 做同样校验
+const ADDED_FORM_GLOSS_REVIEWED = new Map([
+  ['outdated', '过时的是 -ed 形容词常用义，outdate（使过时）的过去分词用法罕见'],
+  ['outgoing', 'out+going 合成形容词，outgo（支出）的 -ing 形式在页面上几乎不出现'],
+  ['rebound', '反弹是常用义，rebind（重捆）的过去式罕见'],
+  ['macroeconomics', '学科名，不是 macroeconomic 的复数'],
+  ['orthodontics', '学科名，不是 orthodontic 的复数'],
+  ['orthopedics', '学科名，不是 orthopedic 的复数'],
+]);
+const formGlossProblems = [];
+for (const [shard, entries] of fullShards) {
+  for (const [base, full] of Object.entries(entries)) {
+    if (addedWords.has(base) || !full.x) continue;
+    for (const [, form] of full.x.split('/').map((p) => p.split(':'))) {
+      if (form === base || !addedWords.has(form) || ADDED_FORM_GLOSS_REVIEWED.has(form)) continue;
+      const baseShort = shortShards.get(shard)?.[base]?.s;
+      const formShort = shortShards.get(form[0])?.[form]?.s;
+      if (baseShort && !formShort?.includes(baseShort)) formGlossProblems.push(`${form}=${formShort}（${base}=${baseShort}）`);
+    }
+  }
+}
+if (formGlossProblems.length) throw new Error(`追加词是已有词条的屈折形式，短释义须包含原形释义（补 short-overrides.tsv 或审核后加入 ADDED_FORM_GLOSS_REVIEWED）：${[...new Set(formGlossProblems)].join(' ')}`);
+if (KEEP_DICT) {
+  const problems = [];
+  for (const [rel, oldShard] of keptDict) {
+    const shard = path.basename(rel, '.json');
+    const newShard = (rel.startsWith('dict/full/') ? fullShards : shortShards).get(shard) ?? {};
+    for (const [w, v] of Object.entries(oldShard)) if (JSON.stringify(newShard[w]) !== JSON.stringify(v)) problems.push(`${rel}:${w} 被改动`);
+    for (const w of Object.keys(newShard)) if (!(w in oldShard) && !addedWords.has(w)) problems.push(`${rel}:${w} 不是追加词却是新词条`);
+  }
+  if (problems.length) throw new Error(`--keep-dict 校验失败（${problems.length} 处）：${problems.slice(0, 20).join(' ')}`);
+  console.log(`--keep-dict 校验通过：旧词条全部不变，追加 ${addedWords.size} 个词条`);
+}

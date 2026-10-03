@@ -1,0 +1,530 @@
+# MOEL 医学口语词表（清洗后的构建输入，供 build-data.mjs 生成 moel）
+# 来源：Medical Oral English List 1.0, by Chartrand, R. & Dilenschneider, R.
+#   https://www.newgeneralservicelist.com/medical-oral-english-list
+#   原始文件 https://www.newgeneralservicelist.com/s/Oral-English-Medical-Corpus.xlsx（sha256 51062df483e646d8543f930dd983879ed032a5f349eb02332e682ac9a2041c21）
+# 许可：CC BY-SA 4.0 https://creativecommons.org/licenses/by-sa/4.0/（本文件作为改编物同样以 CC BY-SA 4.0 发布）
+# 修改说明：
+#   - 取唯一工作表 A 列，去掉不间断空格 \xa0、首尾空白，转小写，去重（appetite 重复）
+#   - 只保留单词条目：多词短语（achilles tendon、alcohol poisoning…）、括注缩写、斜杠并列项不收，也不拆词
+#     （拆开后多为 alcohol/poisoning 这类通用词，不能代表医学词汇）
+#   - 连字符词（x-ray、check-up、anti-inflammatory…）与笔误 CTscan 不收（页面分词按连字符切开，无法整体匹配）
+#   - 屈折形式（复数 -s/-es/不规则复数、-ing、-ed）统一按同一条规则人工词元化，写在第 2 列，build-data.mjs 不再二次词元化：
+#     1) 原词形本身是内置词典的独立词条（有自己的释义）时保留原形：infected（被感染的）、measles（麻疹）、rickets（佝偻病）；
+#        学科名 orthodontics、orthopedics、pediatrics 不是复数，也保留
+#     2) 否则还原为词典里的原形：antibodies→antibody、vertebrae→vertebra、bacteria→bacterium、atria→atrium、alveoli→alveolus、
+#        genitals→genital、immunisations→immunisation、overwhelmed→overwhelm、shivering→shiver、bleeding→bleed、
+#        choking→choke、tingling→tingle、stammering→stammer、thumping→thump、bloated→bloat、excruciating→excruciate、
+#        cravings→crave、eyedrops→eyedrop、mumps→mump（ECDICT 词条 mump 即“腮腺炎”）、
+#        chills→chill（ECDICT chill 英文释义含 “a sensation of cold that often marks the start of an infection”，同一个词）
+#     3) 唯一例外：原形是毫不相干的另一个词时不还原，保留原表词形：hives（荨麻疹，hive=蜂房）、shingles（带状疱疹，
+#        shingle=墙面板）、triceps（单数 tricep 不规范）。这三个词按原词形进词书（见下一条）
+#   - 原内置词典没有的词条（rubella、tonsillitis、hives、shingles、triceps 等）构建时从 ECDICT 追加词典条目后收入词书，
+#     在 scripts/data/external-books-audit.tsv 中记为 added；ECDICT 没有中文释义（不存在或只有 [网络] 释义）的才不收（记为 nodict）
+#   - hives、shingles 同时是已有词条 hive、shingle 的复数，旧词书高亮它们时行内释义也查这两个词条，所以短释义原形义在前、
+#     医学义在后（蜂房/荨麻疹、墙面板/带状疱疹，见 short-overrides.tsv）
+# 列：原表词<TAB>词元（与原表词相同时省略）（按原表顺序）
+abdomen
+abduction
+abnormal
+ache
+acne
+acute
+addict
+adduction
+adhesive
+adolescence
+adrenaline
+aggravate
+airway
+alcoholism
+alkaline
+allergy
+alleviate
+alveoli	alveolus
+amnesia
+anabolism
+anal
+anatomy
+anemia
+anesthesia
+anesthesiologist
+anesthetic
+aneurysm
+ankle
+anorexia
+anterior
+antibiotic
+antibodies	antibody
+anticoagulants	anticoagulant
+antifungal
+antimicrobial
+antiseptic
+anus
+aorta
+appendix
+appetite
+arch
+armpit
+arrhythmia
+artery
+arthritis
+aspirin
+asthma
+atria	atrium
+audiologist
+autonomy
+backache
+backbone
+bacteria	bacterium
+bandage
+baseline
+behavioral
+belly
+bereavement
+bile
+binge
+biopsy
+blackouts	blackout
+bladder
+bleeding	bleed
+blister
+bloated	bloat
+blush
+breastbone
+breathlessness
+bronchitis
+bruise
+bulimia
+bump
+buttock
+calf
+calorie
+canal
+capsule
+carbohydrate
+carcinogen
+carcinoma
+cardiac
+cardiology
+cartilage
+cataract
+cavity
+cerebellum
+cerebral
+cervical
+cervix
+cheekbone
+chemist
+chemotherapy
+chew
+chickenpox
+chills	chill
+chin
+choking	choke
+chronic
+circulatory
+circumcision
+cirrhosis
+clavicle
+clitoris
+colic
+collarbone
+colon
+colonoscopy
+coma
+comatose
+complications	complication
+condom
+constipation
+contagious
+contaminant
+contraception
+convulsion
+cornea
+cramp
+cranial
+cravings	crave
+crutches	crutch
+cure
+dairy
+decay
+dehydrate
+deltoid
+dementia
+dental
+dermatology
+detox
+diabetes
+diagnose
+diaphragm
+diarrhea
+dilation
+disability
+discharge
+discomfort
+disinfect
+dislocate
+distend
+dizziness
+dosage
+drainage
+dribble
+droop
+drowsy
+dwarfism
+earache
+eardrum
+ejaculation
+elbow
+embryo
+enamel
+endocrine
+endoscopy
+enema
+enzymes	enzyme
+epidemic
+epilepsy
+equilibrium
+esophagus
+estrogen
+excrete
+excruciating	excruciate
+exhale
+extremities	extremity
+eyebrow
+eyedrops	eyedrop
+eyelid
+eyesight
+facial
+fahrenheit
+faint
+fatal
+fatigue
+feminine
+femur
+fertilize
+fetus
+fever
+fiber
+fist
+flex
+fluid
+forearm
+forehead
+foreskin
+fracture
+frequency
+gait
+gallbladder
+gargle
+gauze
+genitals	genital
+geriatric
+germ
+gland
+glucose
+gout
+grimace
+grip
+groin
+gum
+hairline
+hallucination
+hamstring
+harmful
+headache
+heal
+heartburn
+heel
+hereditary
+hip
+hives
+hoarseness
+holistic
+hospice
+hospitalization
+hygiene
+hymen
+hypertension
+hysteria
+immunisations	immunisation
+immunity
+impairment
+impulse
+incision
+incurable
+indigestion
+infected
+inflammation
+inhale
+injection
+inoculation
+inpatient
+insertion
+insomnia
+instep
+instinct
+institutionalise
+insulin
+intercourse
+internist
+intestine
+invasive
+iodine
+iris
+irritate
+isolation
+itch
+jaw
+jawbone
+kidney
+kneecap
+knuckle
+larynx
+lesion
+lethal
+lethargy
+leukemia
+lifetime
+ligament
+liver
+lobe
+lotion
+lumbar
+lump
+lung
+malaria
+malformation
+mammogram
+manageable
+marrow
+maternal
+maternity
+measles
+medication
+menopause
+menstrual
+menstruate
+metabolism
+midwife
+migraine
+miscarriage
+mole
+moody
+mucus
+mumps	mump
+muscular
+myopia
+nausea
+nauseous
+navel
+neurology
+nostril
+numbness
+nutrition
+obese
+obstetrician
+oedema
+oesophagus
+ointment
+oncology
+ophthalmology
+oral
+organ
+orthodontics
+orthopedics
+outpatient
+ovary
+overweight
+overwhelmed	overwhelm
+ovulation
+ovum
+oxygen
+pacemaker
+painful
+painkiller
+palm
+palpation
+pancreas
+paralyzation
+pediatrics
+pee
+pelvis
+penicillin
+penis
+persevere
+persistent
+pharmaceutical
+pharmacist
+pharmacy
+phlegm
+physician
+physiotherapy
+pigment
+pill
+placenta
+pneumonia
+poisonous
+polio
+posterior
+posture
+prescription
+prevention
+probe
+prognosis
+progressive
+prostate
+protective
+psychiatry
+psychology
+puberty
+pulmonary
+pulse
+pus
+quarantine
+queasy
+quit
+radiology
+rash
+realistic
+reassure
+rectum
+recur
+reflex
+rehabilitation
+rejuvenate
+relieve
+remedy
+renal
+respiration
+resuscitation
+retina
+rib
+rickets
+roseola
+rotate
+rubella
+rupture
+sac
+saliva
+sanitary
+scalp
+scar
+schizophrenia
+scrape
+scratch
+scrotum
+scrub
+sedentary
+seizure
+senility
+sepsis
+serum
+shin
+shinbone
+shingles
+shivering	shiver
+sinus
+skull
+sling
+smallpox
+sneeze
+sore
+spasm
+sperm
+sphincter
+spleen
+splint
+splinter
+sprain
+stabilize
+stammering	stammer
+sterilization
+sternum
+steroid
+stethoscope
+stiff
+stillborn
+stimulation
+sting
+stitches	stitch
+stomachache
+stool
+stressful
+stroke
+suicide
+surgical
+suture
+swab
+sweat
+swell
+syndrome
+syringe
+tablet
+tailbone
+tartar
+tenderness
+tendon
+tense
+testicle
+testis
+testosterone
+tetanus
+therapeutic
+therapist
+thermometer
+thigh
+thumb
+thumping	thump
+tibia
+tightness
+tingling	tingle
+toe
+tonsil
+tonsillitis
+toothache
+torso
+tourniquet
+toxic
+trachea
+transfusion
+transmit
+traumatic
+tremble
+tremor
+triceps
+tuberculosis
+tumor
+twitch
+ulcer
+underweight
+unwell
+uptight
+urea
+urinate
+urology
+uterus
+vaccine
+vagina
+valve
+vascular
+vasectomy
+vein
+ventilator
+ventricle
+vertebrae	vertebra
+vertigo
+vitamins	vitamin
+vomit
+vulnerable
+waist
+ward
+wart
+wheelchair
+wheeze
+whiplash
+willpower
+windpipe
+worsen
+wrist
+zinc

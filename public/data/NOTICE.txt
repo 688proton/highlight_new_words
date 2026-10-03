@@ -6,4 +6,51 @@
   Retrieved from http://www.cefr-j.org/download.html (via https://github.com/openlanguageprofiles/olp-en-cefrj).
   A1–B2 分级。按其使用条款免费用于商业用途，需注明出处。
 - KyleBing/english-vocabulary, BSD-3-Clause. https://github.com/KyleBing/english-vocabulary
-  仅使用 SAT、英语专业四级/八级的单词列表（不含释义）。
+  仅使用 SAT、英语专业四级/八级的单词列表；其余词表只在构建时作“常用义项”排序信号，不输出其释义文本。
+
+以下词表以知识共享许可发布。books/ 下由它们派生的词书文件（ngsl.json、ngsl-spoken.json、nawl.json、bsl.json、
+tsl.json、moel.json）是改编作品，同样以 CC BY-SA 4.0 发布（https://creativecommons.org/licenses/by-sa/4.0/）；
+cs-250.json、cs-500.json、cs-all.json 以 CC BY 4.0 发布（https://creativecommons.org/licenses/by/4.0/）。
+共同的修改：转小写、重音字母折叠（résumé → resume）、合并重复词条、去掉含连字符/撇号/空格的条目与多词短语、
+去掉词缀/截断碎片与伪单词、去掉高频词的过去式词条（found、founds、bound）、
+不规则复数换成原形（criteria → criterion、bacteria → bacterium、salespeople → salesperson）、
+源表笔误改正（unauthorize → unauthorized）、
+只保留 ECDICT 有中文释义的词（runtime、tuple、rubella 等原内置词典没有的词从 ECDICT 追加词典条目，ECDICT 没有中文释义或只有网络释义的不收）、
+格式转换为 JSON 并按字母排序（不保留原表排名/频率）。
+每个原始词条的去向（收录、合并、去掉及原因）见源码仓库的审计表：
+https://github.com/xqdd/highlight-new-words/blob/master/scripts/data/external-books-audit.tsv
+
+- New General Service List (NGSL) 1.2（含 Supplemental 补充词表），by Browne, C., Culligan, B., & Phillips, J.
+  CC BY-SA 4.0. https://www.newgeneralservicelist.com/new-general-service-list
+  额外修改：Supplemental 中的 March、May 与主表的 march、may 合并；去掉 found。
+- NGSL-Spoken 1.2, by Browne, C. & Culligan, B. CC BY-SA 4.0. https://www.newgeneralservicelist.com/ngsl-spoken
+- New Academic Word List (NAWL) 1.2, by Browne, C., Culligan, B., & Phillips, J.
+  CC BY-SA 4.0. https://www.newgeneralservicelist.com/new-academic-word-list
+  额外修改：只取词头列；去掉词缀条目（amino、anti、ex、micro、mid、multi、neo、non、pre、semi、sub、super、trans）与 bound、founds。
+- Business Service List (BSL) 1.20, by Browne, C. & Culligan, B.
+  CC BY-SA 4.0. https://www.newgeneralservicelist.com/business-service-list
+  额外修改：不区分官方 Band；去掉词缀/截断碎片（alpha、anti、beta、capita、annum、ex、inter、macro、micro、mid、mini、multi、neo、non、
+  pre、quasi、semi、sub、super）、mister（语料中 Mr. 的展开）、bound、e-book；去掉噪声词 pizza、corn、alas；
+  stats 表笔误 unauthorize 换成 unauthorized。
+- TOEIC Service List (TSL) 1.2, by Browne, C. & Culligan, B.
+  CC BY-SA 4.0. https://www.newgeneralservicelist.com/toeic-service-list
+  额外修改：由 ISO-8859-1 转码；résumé 折叠后与 resume 合并；
+  去掉 mister、mini、bound 与 e-book、o'clock、ice cream、ma'am、by-law；
+  扩展内显示名为“职场服务词 TSL”。TOEIC 是 ETS 的注册商标，本扩展与 ETS 无关联。
+- Medical Oral English List (MOEL) 1.0, by Chartrand, R. & Dilenschneider, R.
+  CC BY-SA 4.0. https://www.newgeneralservicelist.com/medical-oral-english-list
+  额外修改：去掉不间断空格与重复项；只保留单词条目（多词短语、括注缩写、连字符词不收）；复数与 -ing/-ed 形式人工词元化为
+  词典原形（antibodies → antibody、atria → atrium、bleeding → bleed、choking → choke、tingling → tingle、mumps → mump），
+  原词形本身是词典词条的保留（infected、measles）；原形是无关的另一个词的不词元化（hives≠hive、shingles≠shingle），
+  按原词形收入词书（与 rubella、tonsillitis 一样从 ECDICT 追加词典条目）。
+  清洗后的中间词表（CC BY-SA 4.0）：
+  https://github.com/xqdd/highlight-new-words/blob/master/scripts/data/moel.tsv
+- A Technical Word List for Research Articles in Computer Science (TWLRACS), by Chen, L. & Lei, L. (2019).
+  English Language Teaching, 12(10), 131. https://doi.org/10.5539/elt.v12n10p131
+  CC BY 4.0. https://ccsenet.org/journal/index.php/elt/article/view/0/40859
+  额外修改：从论文 Appendix A 抽取；丢弃排版断词残片、修复截断词；复数与 -ing/-ed 形式统一词元化为词典原形
+  （vertices → vertex、clustering → cluster、slicing/slices → slice、logging → log、encoding → encode、ordering → order），
+  原形没有中文释义而原词形本身是词典词条的保留原词形（precomputed）；去掉专名/冠名词与缩写、alpha、super、macro；
+  同一词元只保留首次位次；按附录位次切成前 250 / 前 500 / 全部三档
+  （按论文语料词频位次切分，非作者给出的官方分级）。清洗后的中间词表（CC BY 4.0）：
+  https://github.com/xqdd/highlight-new-words/blob/master/scripts/data/twlracs.tsv

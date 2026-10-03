@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -130,7 +131,7 @@ describe('public/data 产物', () => {
     const ids = catalog.books.map((b) => b.id);
     expect(new Set(ids).size).toBe(ids.length);
     for (const b of catalog.books) {
-      expect(['level', 'exam', 'frequency', 'other']).toContain(b.category);
+      expect(['level', 'exam', 'frequency', 'core', 'domain', 'other']).toContain(b.category);
       expect(bookFile(b.id).id).toBe(b.id);
       expect(bookWords(b.id).size, b.id).toBe(b.size);
       expect(b.description, b.id).toBeTruthy();
@@ -217,6 +218,367 @@ describe('public/data 产物', () => {
     expect(noShort).toBeLessThan(10);
     expect(dictEntry('abandon')?.s).toBe('放弃');
     expect(dictEntry('scrutinize')).toMatchObject({ l: 5 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 包含体系（ladder）与外部词表新书（NGSL 系列、MOEL、计算机 TWLRACS）
+// ---------------------------------------------------------------------------
+
+describe('ladder 与 catalog 新字段', () => {
+  it('cefr/coca 两组：成员带 ladder 与 knownName，base 文件存在且不在 books 列表中', () => {
+    expect(catalog.ladders).toEqual({ cefr: { base: 'cefr-a1' }, coca: { base: 'coca-top' } });
+    const ids = new Set(catalog.books.map((b) => b.id));
+    for (const [ladder, { base }] of Object.entries(catalog.ladders!)) {
+      expect(ids.has(base!), base!).toBe(false);
+      const f = bookFile(base!);
+      expect(f.id).toBe(base);
+      expect(f.extends).toBeUndefined();
+      expect(f.words.every((w) => /^[a-z]+$/.test(w))).toBe(true);
+      expect([...f.words].sort()).toEqual(f.words);
+      const members = catalog.books.filter((b) => b.ladder === ladder);
+      expect(members.length, ladder).toBeGreaterThanOrEqual(4);
+      for (const b of members) expect(b.knownName, b.id).toBeTruthy();
+    }
+    for (const b of catalog.books) expect(Boolean(b.ladder), b.id).toBe(b.category === 'level' || b.category === 'frequency');
+    const meta = (id: string) => catalog.books.find((b) => b.id === id)!;
+    expect(meta('cefr-b2').knownName).toBe('A1–B1（B2 以下）');
+    expect(meta('cefr-a2').knownName).toBe('A1（A2 以下）');
+    expect(meta('coca-3k').knownName).toBe('常用前 3000 词及 A1–A2 词');
+  });
+
+  it('base 文件与该组最低档互补：cefr-a1 是 A1 入门词，coca-top 是常用前 3000 词', () => {
+    const a1 = bookWords('cefr-a1');
+    const a2 = bookWords('cefr-a2');
+    expect(a1.size).toBeGreaterThan(800);
+    expect(a1.size).toBeLessThan(1500);
+    expect([...a1].filter((w) => a2.has(w))).toEqual([]);
+    for (const w of ['apple', 'water', 'city', 'good', 'because']) expect(a1.has(w), w).toBe(true);
+    const top = bookWords('coca-top');
+    const k3 = bookWords('coca-3k');
+    expect(top.size).toBeGreaterThan(3000);
+    expect(top.size).toBeLessThan(4500);
+    expect([...top].filter((w) => k3.has(w))).toEqual([]);
+    for (const w of ['people', 'year', 'government', 'money']) expect(top.has(w), w).toBe(true);
+  });
+
+  it('base 文件盖住最低档之下的全部词：任何内置书里词频前 3000 的词都在 coca-top，CEFR-J A1 词都在 cefr-a1', () => {
+    // 回归：coca-top 曾只取 inventory（levelOf）内的词，core/conservative/monday 等不在其中，
+    // 熟词选“常用前 3000 词”时它们仍被 cet4 等书高亮；cefr-a1 曾缺星期/月份/i（ECDICT 词条首字母大写被当作专名）
+    const top = bookWords('coca-top');
+    const a1 = bookWords('cefr-a1');
+    const allBookWords = new Set(catalog.books.flatMap((b) => [...bookWords(b.id)]));
+    const uncovered = [...allBookWords].filter((w) => (dictEntry(w)?.r ?? Infinity) <= 3000 && !top.has(w));
+    expect(uncovered).toEqual([]);
+    const DAYS_MONTHS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'january', 'february', 'april', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+    for (const w of ['core', 'conservative', 'christian', 'north', 'soviet', 'olympic', 'pole', 'god', 'i', ...DAYS_MONTHS]) expect(top.has(w), w).toBe(true);
+    for (const w of ['i', ...DAYS_MONTHS]) expect(a1.has(w), w).toBe(true);
+    // 词典条目带级别 l=1 的词全部在 cefr-a1
+    const levelA1 = [...allBookWords, ...a1].filter((w) => dictEntry(w)?.l === 1);
+    expect(levelA1.filter((w) => !a1.has(w))).toEqual([]);
+  });
+
+  it('搜索别名：考试书中英都有（cet6 → 六级、cet-6）', () => {
+    const meta = (id: string) => catalog.books.find((b) => b.id === id)!;
+    expect(meta('cet6').keywords).toEqual(expect.arrayContaining(['cet6', 'cet-6', '六级']));
+    expect(meta('cet6-new').keywords).toEqual(expect.arrayContaining(['六级', '新增']));
+    for (const b of catalog.books) {
+      expect(b.keywords?.length, b.id).toBeGreaterThan(0);
+      expect(b.keywords!.some((k) => /[一-鿿]/.test(k)), `${b.id} 缺中文别名`).toBe(true);
+      expect(b.keywords!.some((k) => /[a-z]/.test(k)), `${b.id} 缺英文别名`).toBe(true);
+    }
+    // 计算机词表来自科研论文语料，不以“编程/程序员”误导
+    expect(meta('cs-all').keywords).not.toEqual(expect.arrayContaining(['编程']));
+    expect(meta('cs-all').keywords).not.toEqual(expect.arrayContaining(['程序员']));
+  });
+});
+
+describe('外部词表新书（core / domain）', () => {
+  /**
+   * id -> [分类, 词数下限, 词数上限, 许可, 抽样必含词]。
+   * 词数区间收紧到当前产物 ±10 左右：清洗规则变化导致大幅掉词时必须在这里显式改数（明细见 external-books-audit.tsv）
+   */
+  const BOOKS: Record<string, [string, number, number, string, string[]]> = {
+    ngsl: ['core', 2852, 2861, 'CC BY-SA 4.0', ['the', 'government', 'monday', 'january', 'hundred', 'environment', 'criterion']],
+    'ngsl-spoken': ['core', 715, 721, 'CC BY-SA 4.0', ['yeah', 'okay', 'pretty', 'stuff']],
+    nawl: ['domain', 935, 950, 'CC BY-SA 4.0', ['empirical', 'correlation', 'parameter', 'methodology', 'criterion', 'bacterium']],
+    bsl: ['domain', 1710, 1725, 'CC BY-SA 4.0', ['invoice', 'merger', 'dividend', 'audit', 'subsidiary', 'collateral', 'liquidation', 'payoff', 'salesperson', 'unauthorized', 'analytic', 'analytical']],
+    tsl: ['domain', 1232, 1248, 'CC BY-SA 4.0', ['reimbursement', 'itinerary', 'resume', 'refund', 'warranty', 'payroll', 'spreadsheet', 'toner', 'outdated']],
+    moel: ['domain', 495, 505, 'CC BY-SA 4.0', ['abdomen', 'antibiotic', 'antibody', 'diabetes', 'chemotherapy', 'colonoscopy', 'immunisation', 'atrium', 'bacterium',
+      'bleed', 'choke', 'tingle', 'stammer', 'thump', 'bloat', 'shiver', 'chill', 'mump', 'measles', 'infected', 'rubella', 'tonsillitis', 'hives', 'shingles']],
+    // 追加词典条目的专业词（runtime、tuple、recursion、parser、lessee、rubella）也在抽样里：回归“只收原词典词”导致的掉词
+    'cs-250': ['domain', 210, 225, 'CC BY 4.0', ['algorithm', 'database', 'server', 'query', 'kernel', 'node', 'slice', 'runtime', 'tuple', 'recursion']],
+    'cs-500': ['domain', 385, 400, 'CC BY 4.0', ['algorithm', 'compiler', 'encryption', 'asynchronous', 'cache', 'pipeline', 'orthogonal', 'parser', 'bitmap']],
+    'cs-all': ['domain', 580, 592, 'CC BY 4.0', ['algorithm', 'compiler', 'router', 'debug', 'deploy', 'hash', 'log', 'encode', 'order', 'cluster', 'sense', 'message', 'timestamp', 'workflow']],
+  };
+  const AUDIT = fs.readFileSync(path.resolve(__dirname, '../../scripts/data/external-books-audit.tsv'), 'utf8')
+    .split('\n').filter((l) => l && !l.startsWith('#')).slice(1).map((l) => l.split('\t') as [string, string, string, string]);
+  /** 原内置词典没有、构建时从 ECDICT 追加词条的词（审计去向 added） */
+  const ADDED = new Set(AUDIT.filter((r) => r[3] === 'added').map((r) => r[2]));
+  const isAdded = (w: string) => ADDED.has(w);
+
+  it('目录元数据：分类、许可、来源链接、计算机三档同组（group=cs，非 ladder）', () => {
+    for (const [id, [category, min, max, license]] of Object.entries(BOOKS)) {
+      const b = catalog.books.find((x) => x.id === id);
+      expect(b, id).toBeDefined();
+      expect(b!.category, id).toBe(category);
+      expect(b!.license, id).toBe(license);
+      expect(b!.url, id).toMatch(/^https:\/\//);
+      expect(b!.ladder, id).toBeUndefined();
+      expect(b!.size, id).toBeGreaterThanOrEqual(min);
+      expect(b!.size, id).toBeLessThanOrEqual(max);
+      expect(Boolean(b!.group), id).toBe(id.startsWith('cs-'));
+    }
+    // 显示名不用 TOEIC 商标
+    const tsl = catalog.books.find((x) => x.id === 'tsl')!;
+    expect(`${tsl.name} ${tsl.nameEn} ${tsl.short}`).not.toMatch(/toeic|托业/i);
+    // 分类顺序：难度 → 考试 → 词频 → 通用核心词 → 专业领域
+    const order = catalog.books.map((b) => b.category).filter((c, i, a) => a.indexOf(c) === i);
+    expect(order).toEqual(['level', 'exam', 'frequency', 'core', 'domain']);
+  });
+
+  it('抽样词命中（含领域核心词）；无短语/大写/重音/词缀碎片', () => {
+    const FRAGMENTS = ['non', 'anti', 'pre', 'sub', 'multi', 'semi', 'quasi', 'neo', 'mid', 'mini', 'micro', 'macro', 'super', 'inter', 'ex', 'trans', 'capita', 'annum', 'mister', 'amino', 'alpha', 'beta'];
+    for (const [id, [, , , , sample]] of Object.entries(BOOKS)) {
+      const words = bookWords(id);
+      expect(sample.filter((w) => !words.has(w)), id).toEqual([]);
+      expect(FRAGMENTS.filter((w) => words.has(w)), id).toEqual([]);
+      expect([...words].filter((w) => !/^[a-z]+$/.test(w)), id).toEqual([]);
+    }
+    // NAWL 的错误词头 founds、MOEL 复数 antibodies/immunisations、TWLRACS 的 vertices 都不应原样出现
+    expect(bookWords('nawl').has('founds')).toBe(false);
+    for (const w of ['antibodies', 'immunisations', 'atria', 'bacteria']) expect(bookWords('moel').has(w), w).toBe(false);
+    expect(bookWords('cs-all').has('vertices')).toBe(false);
+    // TWLRACS 排版断词残片、专名冠名词与缩写已清洗
+    for (const w of ['rithm', 'gorithm', 'tively', 'google', 'linux', 'http', 'gpu', 'bayesian', 'laplacian', 'lagrangian']) expect(bookWords('cs-all').has(w), w).toBe(false);
+  });
+
+  it('构建不自动词元化：独立词头不被换成无关的另一个词（rebound≠rebind、hives≠hive、shingles≠shingle）', () => {
+    // 回归：构建曾对外部表做 ECDICT 词元化，rebound→rebind（重捆）、shingles→shingle（墙面板）、hives→hive（蜂房）。
+    // 现在只有清洗表第 2 列与 EXTERNAL_HEADWORD_FIXES 的人工映射；这些词头原内置词典没有，按原词头从 ECDICT 追加词条（added）
+    const WRONG: Record<string, string[]> = { bsl: ['rebind', 'outgo'], moel: ['shingle', 'hive'], 'cs-all': ['outgo'] };
+    for (const [id, words] of Object.entries(WRONG)) expect(words.filter((w) => bookWords(id).has(w)), id).toEqual([]);
+    const fateOf = (id: string, raw: string) => AUDIT.find((r) => r[0] === id && r[1] === raw);
+    expect(fateOf('bsl', 'rebound')?.slice(2)).toEqual(['rebound', 'added']);
+    expect(fateOf('moel', 'hives')?.slice(2)).toEqual(['hives', 'added']);
+    expect(fateOf('moel', 'shingles')?.slice(2)).toEqual(['shingles', 'added']);
+    // 追加词条的行内短释义带上本领域义（short-overrides.tsv 覆盖），原形义在前：旧词书高亮页面上的 hives/shingles 时也查这个词形
+    expect(dictEntry('hives')?.s).toBe('蜂房/荨麻疹');
+    expect(dictEntry('shingles')?.s).toBe('墙面板/疱疹');
+    // 独立词头不换成词典里的相近词（outdated≠outdate“使过时”），按原词头追加词条
+    expect(fateOf('tsl', 'outdated')?.slice(2)).toEqual(['outdated', 'added']);
+    expect(fateOf('bsl', 'analytical')?.slice(2)).toEqual(['analytical', 'added']);
+    expect(bookWords('tsl').has('outdate')).toBe(false);
+  });
+
+  it('追加词不改变旧词书用户的行内释义：追加词是已有词条的屈折形式时，短释义包含原形的短释义', () => {
+    // 行内释义先查页面词形（engine.ts#translationKeys）：旧书收了 hive，页面上的 hives 会先命中追加词条 hives。
+    // 回归：hives 曾追加为“荨麻疹”、shingles 为“带状疱疹”，只开 gk/gre 等旧书的用户看到 bee hives=荨麻疹、roof shingles=带状疱疹。
+    // 屈折关系取已有词条的 ECDICT exchange（dict/full 的 x 字段）；下面是逐个审过、改换释义属于纠正的例外（与 build-data.mjs 的 ADDED_FORM_GLOSS_REVIEWED 一致）
+    const REVIEWED: Record<string, string> = {
+      outdated: '过时的，outdate=使过时', outgoing: '向外的，outgo=支出', rebound: '反弹，rebind=重捆',
+      macroeconomics: '学科名', orthodontics: '学科名', orthopedics: '学科名',
+    };
+    const pairs: string[] = [];
+    const problems: string[] = [];
+    for (const c of 'abcdefghijklmnopqrstuvwxyz') {
+      for (const [base, full] of Object.entries(readJson<Record<string, { x?: string }>>(`dict/full/${c}.json`))) {
+        if (isAdded(base) || !full.x) continue;
+        for (const [, form] of full.x.split('/').map((p) => p.split(':'))) {
+          if (!form || form === base || !isAdded(form)) continue;
+          pairs.push(form);
+          const baseShort = dictEntry(base)!.s!;
+          if (!REVIEWED[form] && !dictEntry(form)?.s?.includes(baseShort)) problems.push(`${form}=${dictEntry(form)?.s}（${base}=${baseShort}）`);
+        }
+      }
+    }
+    expect(problems).toEqual([]);
+    // 例外表里的词确实是这种关系（表不过期），hives/shingles 走包含原形释义的规则而不是例外
+    for (const w of [...Object.keys(REVIEWED), 'hives', 'shingles']) expect(pairs, w).toContain(w);
+  });
+
+  it('屈折形式词元化规则一致：词典里有原形的 -s/-ing/-ed 词条不因词形不在词典而被丢掉', () => {
+    // 回归：MOEL 的 bleeding/choking、TWLRACS 的 logging/encoding/slicing 曾保留原形，因不在词典被记 nodict，
+    // 而词典里明明有 bleed、log、encode、slice。规则（见 moel.tsv/twlracs.tsv 文件头）：原词形不是词典词条时还原为原形，
+    // 只有原形是无关的另一个词时例外。下面白名单逐个说明为什么不还原
+    const NOT_INFLECTION: Record<string, string> = {
+      hives: '荨麻疹，hive=蜂房', shingles: '带状疱疹，shingle=墙面板',
+      orthodontics: '学科名，非复数', orthopedics: '学科名，非复数', macroeconomics: '学科名，非复数', outgoing: 'out+going 合成词，非 outgo 的屈折',
+      outdated: '-ed 形容词（过时的），outdate=使过时',
+    };
+    const bases = (w: string) => [
+      w.replace(/s$/, ''), w.replace(/es$/, ''), w.replace(/ies$/, 'y'), w.replace(/ing$/, ''), w.replace(/ing$/, 'e'),
+      w.replace(/ed$/, ''), w.replace(/ed$/, 'e'), w.replace(/d$/, ''), w.replace(/(.)\1ing$/, '$1'), w.replace(/(.)\1ed$/, '$1'),
+    ].filter((b) => b !== w && dictEntry(b));
+    // added 的词按原词形追加了词条，同样要求：词典里已有原形的屈折形式应在清洗表里还原，不应另追加一个词形词条
+    const dropped = AUDIT.filter((r) => (r[3] === 'nodict' || r[3] === 'added') && !NOT_INFLECTION[r[2]] && bases(r[2]).some((b) => !isAdded(b))).map((r) => `${r[0]}:${r[2]}→${bases(r[2]).join('/')}`);
+    expect(dropped).toEqual([]);
+    // 原词形本身是词典词条（自有释义）的保留原形，不被还原：infected（被感染的）
+    expect(bookWords('moel').has('infected')).toBe(true);
+    // BSL 的噪声词按复核结论去掉
+    for (const w of ['pizza', 'corn']) expect(bookWords('bsl').has(w), w).toBe(false);
+  });
+
+  it('twlracs.tsv 覆盖论文附录全部 769 个位次：每个位次一行，不收的行写明原因', () => {
+    const rows = fs.readFileSync(path.resolve(__dirname, '../../scripts/data/twlracs.tsv'), 'utf8').split('\n')
+      .filter((l) => l && !l.startsWith('#')).map((l) => l.split('\t'));
+    expect(rows.map((r) => Number(r[0]))).toEqual(Array.from({ length: 769 }, (_, i) => i + 1));
+    for (const r of rows) {
+      expect(r[1], r.join(' ')).toMatch(/^([a-z]+|-)$/);
+      expect(r[2], r.join(' ')).toMatch(/^[a-z]+$/);
+      // 不收的行（-）必须写原因：断词残片 / 缩写 / 专名/冠名词；收的行不应带原因列
+      if (r[1] === '-') expect(['断词残片', '缩写', '专名/冠名词'], r.join(' ')).toContain(r[3]);
+      else expect(r[3], r.join(' ')).toBeUndefined();
+    }
+    // 第 245、307 位 SLICE/SLICES 曾漏收：现在与第 126 位 slicing 同为 slice，cs-250 收录
+    expect(rows.filter((r) => ['126', '245', '307'].includes(r[0]!)).map((r) => r[1])).toEqual(['slice', 'slice', 'slice']);
+  });
+
+  it('NOTICE 的修改说明与产物一致：举例的映射结果都在词书里，说“不收”的词都不在', () => {
+    const notice = fs.readFileSync(path.join(DATA, 'NOTICE.txt'), 'utf8');
+    // 按来源分节（以“- ”开头的行），每节里的 “a → b” 映射：b 必须在该节对应的词书里
+    const SECTIONS: [RegExp, string[]][] = [
+      [/^- Business Service List/, ['bsl']],
+      // TSL 一节没有词头映射（outdated 不再换成 outdate，按原词头追加词条），不在此列
+      [/^- Medical Oral English List/, ['moel']],
+      [/^- A Technical Word List/, ['cs-all']],
+    ];
+    const blocks = notice.split(/\n(?=- )/);
+    for (const [head, ids] of SECTIONS) {
+      const block = blocks.find((b) => head.test(b));
+      expect(block, String(head)).toBeDefined();
+      // 左侧写成 a/b/c 的无歧义形式：嵌套量词 (?:\/?[a-z]+)+ 在长英文段上会灾难性回溯（单条用例 4s+，并发时超时）
+      const targets = [...block!.matchAll(/[a-z]+(?:\/[a-z]+)* (?:→|换成) ([a-z]+)/g)].map((m) => m[1]!);
+      expect(targets.length, String(head)).toBeGreaterThan(0);
+      for (const id of ids) expect(targets.filter((w) => !bookWords(id).has(w)), `${id}: ${String(head)}`).toEqual([]);
+    }
+    // 共同修改段里的映射：结果词在任一新书里
+    const all = new Set(Object.keys(BOOKS).flatMap((id) => [...bookWords(id)]));
+    const common = blocks.find((b) => b.includes('共同的修改'))!;
+    const commonTargets = [...common.matchAll(/[a-z]+ → ([a-z]+)/g)].map((m) => m[1]!);
+    expect(commonTargets.filter((w) => !all.has(w))).toEqual([]);
+    // 共同修改段举例的追加词（原内置词典没有、从 ECDICT 追加）确实收进了新书
+    for (const w of ['runtime', 'tuple', 'rubella']) {
+      expect(common).toContain(w);
+      expect(all.has(w), w).toBe(true);
+    }
+  });
+
+  it('词书忠实于原表：不额外去 A1–A2 基础词（作熟词本时就是原表集合，基础词由 cefr-a2 等熟词本处理）', () => {
+    for (const w of ['apple', 'birthday']) expect(bookWords('tsl').has(w), w).toBe(true);
+    // TWLRACS 位次第 1 的 type 在三档里都有
+    for (const id of ['cs-250', 'cs-500', 'cs-all']) expect(bookWords(id).has('type'), id).toBe(true);
+    for (const b of catalog.books.filter((x) => x.category === 'core' || x.category === 'domain')) {
+      expect(b.description, b.id).not.toMatch(/基础词/);
+    }
+  });
+
+  it('计算机三档说明里的数字与审计表对得上：附录词条数 → 收录数', () => {
+    for (const id of ['cs-250', 'cs-500', 'cs-all']) {
+      const b = catalog.books.find((x) => x.id === id)!;
+      const rows = AUDIT.filter((r) => r[0] === id);
+      const m = (b.description ?? '').match(/附录(?:位次前 \d+ 的|全部) (\d+) 个词条，收录 (\d+) 个/);
+      expect(m, id).not.toBeNull();
+      expect(Number(m![1]), id).toBe(rows.length);
+      expect(Number(m![2]), id).toBe(b.size);
+      expect(rows.filter((r) => r[3] === 'ok' || r[3] === 'added').length, id).toBe(b.size);
+    }
+  });
+
+  it('审计表与产物一致：每个原始词条都有去向，收录的词恰好是词书词，nodict 的词确实不在词典里，追加词有词条', () => {
+    const FATES = new Set(['ok', 'added', 'dup', 'excluded', 'form', 'affix', 'noise', 'inflection', 'nodict']);
+    for (const id of Object.keys(BOOKS)) {
+      const rows = AUDIT.filter((r) => r[0] === id);
+      expect(rows.length, id).toBeGreaterThan(0);
+      expect(rows.filter((r) => !FATES.has(r[3])), id).toEqual([]);
+      const kept = new Set(rows.filter((r) => r[3] === 'ok' || r[3] === 'added').map((r) => r[2]));
+      expect(kept, id).toEqual(bookWords(id));
+      expect(rows.filter((r) => r[3] === 'nodict' && dictEntry(r[2])), id).toEqual([]);
+      expect(rows.filter((r) => r[3] === 'added' && !dictEntry(r[2])), id).toEqual([]);
+    }
+    // 追加词判定按词、与书无关：同一个词在各书审计行里的去向一致（不会一本 ok、一本 added）
+    const fatesOf = new Map<string, Set<string>>();
+    for (const r of AUDIT.filter((x) => x[3] === 'ok' || x[3] === 'added')) fatesOf.set(r[2], (fatesOf.get(r[2]) ?? new Set()).add(r[3]));
+    expect([...fatesOf].filter(([, f]) => f.size > 1).map(([w]) => w)).toEqual([]);
+    // nodict 基本消失：只剩 ECDICT 没有中文释义的词（polynomially 只有 [网络] 释义）
+    expect([...new Set(AUDIT.filter((r) => r[3] === 'nodict').map((r) => r[2]))].sort()).toEqual(['polynomially']);
+    // 清洗表给的原形没有中文释义时退回原词形：precomputed 的原形 precompute 只有 [网络] 释义，precomputed 本身有“[计] 预先计算的”
+    expect(AUDIT.filter((r) => r[1] === 'precomputed').map((r) => `${r[0]}:${r[2]}:${r[3]}`)).toEqual(['cs-500:precomputed:added', 'cs-all:precomputed:added']);
+    // cs-250 的原始条目 = TWLRACS 清洗表中位次 ≤ 250 的全部词元
+    const tsv = fs.readFileSync(path.resolve(__dirname, '../../scripts/data/twlracs.tsv'), 'utf8').split('\n').filter((l) => l && !l.startsWith('#'));
+    expect(AUDIT.filter((r) => r[0] === 'cs-250').length).toBe(tsv.filter((l) => Number(l.split('\t')[0]) <= 250).length);
+  });
+
+  it('计算机三档是嵌套的“前 N”集合：cs-250 ⊂ cs-500 ⊂ cs-all', () => {
+    const [a, b, c] = ['cs-250', 'cs-500', 'cs-all'].map(bookWords);
+    expect([...a!].filter((w) => !b!.has(w))).toEqual([]);
+    expect([...b!].filter((w) => !c!.has(w))).toEqual([]);
+    expect(a!.size).toBeLessThan(b!.size);
+    expect(b!.size).toBeLessThan(c!.size);
+  });
+
+  it('每个新书词都有词典条目与行内短释义', () => {
+    const missing: string[] = [];
+    const noShort: string[] = [];
+    for (const id of Object.keys(BOOKS)) {
+      for (const w of bookWords(id)) {
+        const e = dictEntry(w);
+        if (!e) missing.push(`${id}:${w}`);
+        else if (!e.s) noShort.push(`${id}:${w}`);
+      }
+    }
+    expect(missing).toEqual([]);
+    expect(noShort).toEqual([]);
+  });
+});
+
+describe('已有数据产物不变（新增词书不得改动旧词书与已有词典词条）', () => {
+  /**
+   * 基线 tests/fixtures/data-baseline.json：新增外部词表书之前 public/data 下产物的 sha256（index.json、NOTICE.txt 除外）。
+   * - exact：lemma 与旧词书，必须逐字节不变
+   * - appendOnly：dict 短/全表分片，只允许追加外部词表书的新词条（审计去向 added）——新分片去掉追加词后重新 JSON.stringify，
+   *   必须与基线文件逐字节一致（分片是按词排序的 JSON.stringify 输出，去掉追加词即还原旧文件），即旧词条的所有字段都不变
+   * 改 build-data.mjs、short-overrides.tsv 等若连带改了旧短释义，这里会报。构建时也可用 --keep-dict <旧 data 目录> 做同样校验。
+   * 确需改动已有词典/词书时（如修正释义），在同一次提交里重新生成基线（dict 分片要先去掉追加词再算哈希）并在提交说明中写明原因
+   */
+  const BASELINE = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../fixtures/data-baseline.json'), 'utf8')) as {
+    exact: Record<string, string>;
+    appendOnly: Record<string, string>;
+  };
+  const sha256 = (buf: string | Buffer) => crypto.createHash('sha256').update(buf).digest('hex');
+  const ADDED = new Set(fs.readFileSync(path.resolve(__dirname, '../../scripts/data/external-books-audit.tsv'), 'utf8')
+    .split('\n').map((l) => l.split('\t')).filter((r) => r[3] === 'added').map((r) => r[2]!));
+  /** 分片去掉追加词后的 JSON 文本（还原新增词书之前的分片） */
+  const withoutAdded = (rel: string) => {
+    const shard = JSON.parse(fs.readFileSync(path.join(DATA, rel), 'utf8')) as Record<string, unknown>;
+    return JSON.stringify(Object.fromEntries(Object.entries(shard).filter(([w]) => !ADDED.has(w))));
+  };
+
+  it('lemma 与旧词书逐字节等于基线', () => {
+    expect(Object.keys(BASELINE.exact).length).toBe(28);
+    const changed = Object.entries(BASELINE.exact).filter(([rel, hash]) => sha256(fs.readFileSync(path.join(DATA, rel))) !== hash).map(([rel]) => rel);
+    expect(changed).toEqual([]);
+  });
+
+  it('dict 分片只追加：去掉追加词后与基线逐字节一致（旧词条所有字段不变）', () => {
+    expect(Object.keys(BASELINE.appendOnly).length).toBe(52);
+    const changed = Object.entries(BASELINE.appendOnly).filter(([rel, hash]) => sha256(withoutAdded(rel)) !== hash).map(([rel]) => rel);
+    expect(changed).toEqual([]);
+  });
+
+  it('追加词条确实是新增的：每个追加词都有短表词条，且确实不在基线分片里（新分片 ≠ 去掉追加词的分片）', () => {
+    expect(ADDED.size).toBeGreaterThan(100);
+    for (const w of ADDED) expect(dictEntry(w), w).toBeDefined();
+    // 有追加词的短表分片，文件本身必然与基线不同（追加词若本就在旧分片里，去掉它后哈希会对不上，上一条用例报）
+    for (const letter of new Set([...ADDED].map((w) => w[0]))) {
+      const rel = `dict/${letter}.json`;
+      expect(sha256(fs.readFileSync(path.join(DATA, rel))), rel).not.toBe(BASELINE.appendOnly[rel]);
+    }
+  });
+
+  it('dict 目录没有基线之外的分片', () => {
+    const shards = ['dict', 'dict/full'].flatMap((d) => fs.readdirSync(path.join(DATA, d)).filter((f) => f.endsWith('.json')).map((f) => `${d}/${f}`));
+    expect(shards.filter((rel) => !(rel in BASELINE.appendOnly))).toEqual([]);
   });
 });
 

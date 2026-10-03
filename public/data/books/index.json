@@ -8,6 +8,15 @@
    "short": "A2+",
    "category": "level",
    "level": 2,
+   "ladder": "cefr",
+   "knownName": "A1（A2 以下）",
+   "keywords": [
+    "cefr",
+    "a2",
+    "初级",
+    "难度",
+    "级别"
+   ],
    "source": "CEFR-J Wordlist 1.5 + ECDICT 词频",
    "description": "高亮 A2 及以上的词。已掌握 A1 入门词，能应对熟悉话题的简单交流",
    "size": 19583
@@ -19,6 +28,15 @@
    "short": "B1+",
    "category": "level",
    "level": 3,
+   "ladder": "cefr",
+   "knownName": "A1–A2（B1 以下）",
+   "keywords": [
+    "cefr",
+    "b1",
+    "中级",
+    "难度",
+    "级别"
+   ],
    "source": "CEFR-J Wordlist 1.5 + ECDICT 词频",
    "description": "高亮 B1 及以上的词。已掌握 A1–A2，能理解熟悉主题的要点（约初中毕业）",
    "size": 18093
@@ -30,6 +48,15 @@
    "short": "B2+",
    "category": "level",
    "level": 4,
+   "ladder": "cefr",
+   "knownName": "A1–B1（B2 以下）",
+   "keywords": [
+    "cefr",
+    "b2",
+    "中高级",
+    "难度",
+    "级别"
+   ],
    "source": "CEFR-J Wordlist 1.5 + ECDICT 词频",
    "description": "高亮 B2 及以上的词。已掌握 A1–B1，能就多种话题流利交流（约高考/四级）",
    "size": 16218
@@ -41,6 +68,15 @@
    "short": "C1+",
    "category": "level",
    "level": 5,
+   "ladder": "cefr",
+   "knownName": "A1–B2（C1 以下）",
+   "keywords": [
+    "cefr",
+    "c1",
+    "高级",
+    "难度",
+    "级别"
+   ],
    "source": "CEFR-J Wordlist 1.5 + ECDICT 词频",
    "description": "高亮 C1 及以上的词。已掌握 A1–B2，能读懂复杂长文（约六级/考研）",
    "size": 13926
@@ -52,6 +88,15 @@
    "short": "C2+",
    "category": "level",
    "level": 6,
+   "ladder": "cefr",
+   "knownName": "A1–C1（C2 以下）",
+   "keywords": [
+    "cefr",
+    "c2",
+    "精通",
+    "难度",
+    "级别"
+   ],
    "source": "CEFR-J Wordlist 1.5 + ECDICT 词频",
    "description": "高亮 C2 及以上的词。已掌握 C1 及以下，只标出低频、专业或文学词（约 GRE）",
    "size": 8520
@@ -64,6 +109,11 @@
    "category": "exam",
    "level": 1,
    "source": "ECDICT (MIT)",
+   "keywords": [
+    "zhongkao",
+    "初中",
+    "中考"
+   ],
    "description": "中考词汇",
    "size": 1569
   },
@@ -75,6 +125,11 @@
    "category": "exam",
    "level": 2,
    "source": "ECDICT (MIT)",
+   "keywords": [
+    "gaokao",
+    "高中",
+    "高考"
+   ],
    "description": "高考词汇，已去掉 943 个 A1 及以下的基础词",
    "size": 2604
   },
@@ -86,6 +141,13 @@
    "category": "exam",
    "level": 2,
    "source": "ECDICT (MIT)",
+   "keywords": [
+    "gaokao",
+    "高中",
+    "高考",
+    "新增",
+    "增量"
+   ],
    "delta": {
     "of": "gk",
     "minus": [
@@ -103,6 +165,12 @@
    "category": "exam",
    "level": 3,
    "source": "ECDICT (MIT)",
+   "keywords": [
+    "cet4",
+    "cet-4",
+    "四级",
+    "大学英语四级"
+   ],
    "description": "大学英语四级词汇，已去掉 1330 个 A2 及以下的基础词",
    "size": 2454
   },
@@ -114,6 +182,14 @@
    "category": "exam",
    "level": 3,
    "source": "ECDICT (MIT)",
+   "keywords": [
+    "cet4",
+    "cet-4",
+    "四级",
+    "大学英语四级",
+    "新增",
+    "增量"
+   ],
    "delta": {
     "of": "cet4",
     "minus": [
@@ -132,6 +208,12 @@
    "category": "exam",
    "level": 4,
    "source": "ECDICT (MIT)",
+   "keywords": [
+    "cet6",
+    "cet-6",
+    "六级",
+    "大学英语六级"
+   ],
    "description": "大学英语六级词汇，已去掉 2462 个 B1 及以下的基础词",
    "size": 2854
   },
@@ -143,6 +225,14 @@
    "category": "exam",
    "level": 4,
    "source": "ECDICT (MIT)",
+   "keywords": [
+    "cet6",
+    "cet-6",
+    "六级",
+    "大学英语六级",
+    "新增",
+    "增量"
+   ],
    "delta": {
     "of": "cet6",
     "minus": [
@@ -162,6 +252,12 @@
    "category": "exam",
    "level": 5,
    "source": "ECDICT (MIT)",
+   "keywords": [
+    "kaoyan",
+    "postgraduate",
+    "考研",
+    "研究生"
+   ],
    "description": "考研词汇，已去掉 2553 个 B1 及以下的基础词",
    "size": 2205
   },
@@ -173,6 +269,12 @@
    "category": "exam",
    "level": 5,
    "source": "KyleBing/english-vocabulary (BSD-3) 词表",
+   "keywords": [
+    "tem4",
+    "tem-4",
+    "专四",
+    "专业四级"
+   ],
    "description": "英语专业四级词汇，已去掉 1309 个 B1 及以下的基础词",
    "size": 2940
   },
@@ -184,6 +286,14 @@
    "category": "exam",
    "level": 5,
    "source": "ECDICT (MIT)",
+   "keywords": [
+    "kaoyan",
+    "postgraduate",
+    "考研",
+    "研究生",
+    "新增",
+    "增量"
+   ],
    "delta": {
     "of": "kaoyan",
     "minus": [
@@ -204,6 +314,10 @@
    "category": "exam",
    "level": 6,
    "source": "ECDICT (MIT)",
+   "keywords": [
+    "ielts",
+    "雅思"
+   ],
    "description": "雅思词汇，已去掉 2031 个 B1 及以下的基础词",
    "size": 2678
   },
@@ -215,6 +329,12 @@
    "category": "exam",
    "level": 6,
    "source": "ECDICT (MIT)",
+   "keywords": [
+    "ielts",
+    "雅思",
+    "新增",
+    "增量"
+   ],
    "delta": {
     "of": "ielts",
     "minus": [
@@ -235,6 +355,10 @@
    "category": "exam",
    "level": 7,
    "source": "ECDICT (MIT)",
+   "keywords": [
+    "toefl",
+    "托福"
+   ],
    "description": "托福词汇，已去掉 1785 个 B1 及以下的基础词",
    "size": 4933
   },
@@ -246,6 +370,12 @@
    "category": "exam",
    "level": 7,
    "source": "ECDICT (MIT)",
+   "keywords": [
+    "toefl",
+    "托福",
+    "新增",
+    "增量"
+   ],
    "delta": {
     "of": "toefl",
     "minus": [
@@ -266,6 +396,10 @@
    "category": "exam",
    "level": 8,
    "source": "KyleBing/english-vocabulary (BSD-3) 词表",
+   "keywords": [
+    "sat",
+    "美国高考"
+   ],
    "description": "SAT词汇，已去掉 1063 个 B2 及以下的基础词",
    "size": 3336
   },
@@ -277,6 +411,12 @@
    "category": "exam",
    "level": 8,
    "source": "KyleBing/english-vocabulary (BSD-3) 词表",
+   "keywords": [
+    "tem8",
+    "tem-8",
+    "专八",
+    "专业八级"
+   ],
    "description": "英语专业八级词汇，已去掉 5609 个 B2 及以下的基础词",
    "size": 6470
   },
@@ -288,6 +428,10 @@
    "category": "exam",
    "level": 9,
    "source": "ECDICT (MIT)",
+   "keywords": [
+    "gre",
+    "美国研究生"
+   ],
    "description": "GRE词汇，已去掉 1511 个 B2 及以下的基础词",
    "size": 5813
   },
@@ -299,6 +443,12 @@
    "category": "exam",
    "level": 9,
    "source": "ECDICT (MIT)",
+   "keywords": [
+    "gre",
+    "美国研究生",
+    "新增",
+    "增量"
+   ],
    "delta": {
     "of": "gre",
     "minus": [
@@ -321,6 +471,15 @@
    "short": "3k+",
    "category": "frequency",
    "level": 3,
+   "ladder": "coca",
+   "knownName": "常用前 3000 词及 A1–A2 词",
+   "keywords": [
+    "coca",
+    "3k",
+    "3000",
+    "词频",
+    "常用词"
+   ],
    "source": "ECDICT COCA/BNC 词频排名",
    "description": "高亮词频排名 3000 之后的词（视前 3000 个常用词为已会）",
    "size": 17145
@@ -332,6 +491,15 @@
    "short": "5k+",
    "category": "frequency",
    "level": 5,
+   "ladder": "coca",
+   "knownName": "常用前 5000 词及 A1–A2 词",
+   "keywords": [
+    "coca",
+    "5k",
+    "5000",
+    "词频",
+    "常用词"
+   ],
    "source": "ECDICT COCA/BNC 词频排名",
    "description": "高亮词频排名 5000 之后的词（视前 5000 个常用词为已会）",
    "size": 15869
@@ -343,6 +511,15 @@
    "short": "8k+",
    "category": "frequency",
    "level": 8,
+   "ladder": "coca",
+   "knownName": "常用前 8000 词及 A1–A2 词",
+   "keywords": [
+    "coca",
+    "8k",
+    "8000",
+    "词频",
+    "常用词"
+   ],
    "source": "ECDICT COCA/BNC 词频排名",
    "description": "高亮词频排名 8000 之后的词（视前 8000 个常用词为已会）",
    "size": 13715
@@ -354,9 +531,221 @@
    "short": "12k+",
    "category": "frequency",
    "level": 12,
+   "ladder": "coca",
+   "knownName": "常用前 12000 词及 A1–A2 词",
+   "keywords": [
+    "coca",
+    "12k",
+    "12000",
+    "词频",
+    "常用词"
+   ],
    "source": "ECDICT COCA/BNC 词频排名",
    "description": "高亮词频排名 12000 之后的词（视前 12000 个常用词为已会）",
    "size": 10686
+  },
+  {
+   "source": "NGSL Project",
+   "license": "CC BY-SA 4.0",
+   "id": "ngsl",
+   "name": "通用核心词 NGSL",
+   "nameEn": "New General Service List",
+   "short": "NGSL",
+   "category": "core",
+   "level": 1,
+   "url": "https://www.newgeneralservicelist.com/new-general-service-list",
+   "keywords": [
+    "ngsl",
+    "general service list",
+    "核心词",
+    "通用",
+    "基础词",
+    "高频词"
+   ],
+   "description": "新通用词表 NGSL 1.2（含星期/月份/数字等补充词）：日常英文最常用的核心词，适合整体作熟词本",
+   "size": 2858
+  },
+  {
+   "source": "NGSL Project",
+   "license": "CC BY-SA 4.0",
+   "id": "ngsl-spoken",
+   "name": "口语核心词 NGSL-S",
+   "nameEn": "NGSL-Spoken",
+   "short": "NGSL-S",
+   "category": "core",
+   "level": 2,
+   "url": "https://www.newgeneralservicelist.com/ngsl-spoken",
+   "keywords": [
+    "ngsl",
+    "ngsl-s",
+    "spoken",
+    "口语",
+    "核心词",
+    "通用"
+   ],
+   "description": "NGSL-Spoken 1.2：日常口语最常用的核心词",
+   "size": 721
+  },
+  {
+   "source": "NGSL Project",
+   "license": "CC BY-SA 4.0",
+   "id": "nawl",
+   "name": "学术科研 NAWL",
+   "nameEn": "New Academic Word List",
+   "short": "NAWL",
+   "category": "domain",
+   "level": 1,
+   "url": "https://www.newgeneralservicelist.com/new-academic-word-list",
+   "keywords": [
+    "nawl",
+    "academic",
+    "学术",
+    "科研",
+    "论文"
+   ],
+   "description": "新学术词表 NAWL 1.2：NGSL 之外学术文本常用的词，适合读论文/教材",
+   "size": 944
+  },
+  {
+   "source": "NGSL Project",
+   "license": "CC BY-SA 4.0",
+   "id": "bsl",
+   "name": "商务 BSL",
+   "nameEn": "Business Service List",
+   "short": "BSL",
+   "category": "domain",
+   "level": 2,
+   "url": "https://www.newgeneralservicelist.com/business-service-list",
+   "keywords": [
+    "bsl",
+    "business",
+    "商务",
+    "商业",
+    "经济",
+    "金融"
+   ],
+   "description": "商务服务词表 BSL 1.20：NGSL 之外商务文本常用的词",
+   "size": 1718
+  },
+  {
+   "source": "NGSL Project",
+   "license": "CC BY-SA 4.0",
+   "id": "tsl",
+   "name": "职场服务词 TSL",
+   "nameEn": "TSL Workplace List",
+   "short": "TSL",
+   "category": "domain",
+   "level": 3,
+   "url": "https://www.newgeneralservicelist.com/toeic-service-list",
+   "keywords": [
+    "tsl",
+    "toeic",
+    "托业",
+    "职场",
+    "办公",
+    "服务"
+   ],
+   "description": "TSL 1.2：NGSL 之外职场与日常服务场景常用的词",
+   "size": 1240
+  },
+  {
+   "source": "NGSL Project（Chartrand & Dilenschneider）",
+   "license": "CC BY-SA 4.0",
+   "id": "moel",
+   "name": "医学常用词 MOEL",
+   "nameEn": "Medical Oral English List",
+   "short": "MOEL",
+   "category": "domain",
+   "level": 4,
+   "url": "https://www.newgeneralservicelist.com/medical-oral-english-list",
+   "keywords": [
+    "moel",
+    "medical",
+    "medicine",
+    "医学",
+    "医疗",
+    "医生",
+    "看病"
+   ],
+   "description": "医学口语词表 MOEL 1.0：医患交流常用的医学词（只收单词条目，不含多词短语）",
+   "size": 505
+  },
+  {
+   "id": "cs-250",
+   "name": "计算机 常用前 250",
+   "nameEn": "Computer Science top 250",
+   "short": "CS 250",
+   "category": "domain",
+   "level": 5,
+   "group": "cs",
+   "source": "Chen & Lei 2019（TWLRACS）",
+   "license": "CC BY 4.0",
+   "url": "https://doi.org/10.5539/elt.v12n10p131",
+   "keywords": [
+    "cs",
+    "computer science",
+    "twlracs",
+    "计算机",
+    "计算机科学",
+    "科研论文",
+    "技术词"
+   ],
+   "description": "计算机科研论文技术词表 TWLRACS（按论文语料词频，非官方分级）：附录位次前 250 的 250 个词条，收录 218 个，其余为重复词元、专名/缩写/断词残片、词缀碎片",
+   "size": 218
+  },
+  {
+   "id": "cs-500",
+   "name": "计算机 常用前 500",
+   "nameEn": "Computer Science top 500",
+   "short": "CS 500",
+   "category": "domain",
+   "level": 6,
+   "group": "cs",
+   "source": "Chen & Lei 2019（TWLRACS）",
+   "license": "CC BY 4.0",
+   "url": "https://doi.org/10.5539/elt.v12n10p131",
+   "keywords": [
+    "cs",
+    "computer science",
+    "twlracs",
+    "计算机",
+    "计算机科学",
+    "科研论文",
+    "技术词"
+   ],
+   "description": "计算机科研论文技术词表 TWLRACS（按论文语料词频，非官方分级）：附录位次前 500 的 500 个词条，收录 395 个，其余为重复词元、专名/缩写/断词残片、词缀碎片",
+   "size": 395
+  },
+  {
+   "id": "cs-all",
+   "name": "计算机 全部",
+   "nameEn": "Computer Science",
+   "short": "CS",
+   "category": "domain",
+   "level": 7,
+   "group": "cs",
+   "source": "Chen & Lei 2019（TWLRACS）",
+   "license": "CC BY 4.0",
+   "url": "https://doi.org/10.5539/elt.v12n10p131",
+   "keywords": [
+    "cs",
+    "computer science",
+    "twlracs",
+    "计算机",
+    "计算机科学",
+    "科研论文",
+    "技术词"
+   ],
+   "description": "计算机科研论文技术词表 TWLRACS（按论文语料词频，非官方分级）：附录全部 769 个词条，收录 588 个，其余为重复词元、专名/缩写/断词残片、词缀碎片、ECDICT 没有中文释义的词",
+   "size": 588
   }
- ]
+ ],
+ "ladders": {
+  "cefr": {
+   "base": "cefr-a1"
+  },
+  "coca": {
+   "base": "coca-top"
+  }
+ }
 }
