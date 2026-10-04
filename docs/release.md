@@ -178,7 +178,7 @@ npm run build:firefox            # 产物 ${OUT_DIR:-.output}/firefox-mv3
 
 **代码与包**
 
-- [ ] `package.json` 版本号已递增（首发 3.0.0），与 tag 一致 —— 版本号为 3.0.0；tag `v3.0.0` 待发版提交时打
+- [ ] `package.json` 版本号已递增（首发 3.0.0），与 tag 一致 —— 版本号为 3.0.1（词书扩充与“词书作熟词本”）；tag `v3.0.1` 待发版提交时打
 - [ ] `npm ci && npm run typecheck && npm test` 通过（以发版提交为准重跑；2026-10-01 最近一次全量为 485 通过、1 跳过，另有并行开发中的 `options-fix`、`lemma` 用例未收尾，发版前须全绿）
 - [x] `npm run zip` 成功；解压 chrome zip 检查 `manifest.json`：版本号 3.0.0、权限 `storage`/`unlimitedStorage`/`tts`/`tabs`/`contextMenus`/`scripting`、无 `browser_specific_settings`
 - [x] `_locales/*/messages.json`：`appName` ≤ 75 字符、`appDesc` ≤ 132 字符（中文 20/39，英文 66/118）

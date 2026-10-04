@@ -6,7 +6,7 @@ import { STORAGE_KEYS } from '@/core/storage/keys';
  * 升级后首次打开选项页时显示的“更新说明”：只写与旧版或直觉不同的行为，每条一句话，并给出去设置的位置。
  * 内容变化时递增 RELEASE_NOTES_VERSION，已读版本存在 storage.local `uiNotesSeen`，与当前版本相等才算已读（不是“不低于”，版本只递增；自动化脚本要跳过弹窗时写入当前版本号）。
  */
-export const RELEASE_NOTES_VERSION = '3.1';
+export const RELEASE_NOTES_VERSION = '3.0.1';
 
 export interface ReleaseNote {
   title: string;

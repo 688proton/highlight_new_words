@@ -2,7 +2,7 @@
   "name": "highlight-new-words",
   "description": "有道/欧路生词本与分级词书网页高亮扩展",
   "private": true,
-  "version": "3.0.0",
+  "version": "3.0.1",
   "type": "module",
   "scripts": {
     "dev": "wxt",
